@@ -1,0 +1,50 @@
+name: japra_redwood_v3
+description: Oracle WMS Redwood Mobile custom client (Flutter) - active development line, forked from the earlier v2 POC.
+publish_to: "none"
+version: 0.1.0
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.2.0
+  # Barcode scanning (camera). For Zebra rugged devices, DataWedge sends scans
+  # as keystrokes into the focused field, so this is only needed for camera scan.
+  mobile_scanner: ^5.2.3
+  # Split IBLPN photo capture (2026-07-10) - launches the native camera app
+  # for a one-off photo, then the image is copied into the app's own local
+  # documents storage.
+  image_picker: ^1.1.2
+  path_provider: ^2.1.4
+  # Persists the operator-configurable environment list (2026-07-11) across
+  # app launches - a plain XML/plist-backed key-value store, adequate for
+  # this test-grade app (see AppConfig's existing note on clientSecret not
+  # being production-safe either).
+  shared_preferences: ^2.3.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  flutter_launcher_icons: ^0.14.1
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/icon/
+
+# Regenerate all platform app icons from assets/icon/japra_icon.png with:
+#   dart run flutter_launcher_icons
+flutter_launcher_icons:
+  image_path: "assets/icon/japra_icon.png"
+  android: true
+  ios: true
+  macos:
+    generate: true
+  web:
+    generate: true
+  windows:
+    generate: true
+    icon_size: 256
