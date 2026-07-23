@@ -9,7 +9,7 @@
 
 Oracle Custom App's core challenge is that Oracle's Redwood Mobile RF API (`get_next_rwmobile_page`) is not publicly documented in enough detail to build against directly — every request/response shape, every control-key value, and the exact session-conflict behavior had to be reverse-engineered from live captures (Postman, the app's own on-device debug sheet, and direct live testing against the real `tb2`/`flow_test` WMS instance). This document summarizes the issues found and resolved across this engagement, the evidence behind each fix, and the current state of the application.
 
-**Project split (2026-07-10):** the codebase forked into two folders — `ksap_redwood_v2` (frozen, already-demonstrated POC; §2.1-§2.11 below all happened here and it is not modified further) and `japra_redwood_v3` (active development line; §2.12 onward happened here). See §2.12 for the fork mechanics.
+**Project split (2026-07-10):** the codebase forked into two folders — `redwood_v2` (frozen, already-demonstrated POC; §2.1-§2.11 below all happened here and it is not modified further) and `japra_redwood_v3` (active development line; §2.12 onward happened here). See §2.12 for the fork mechanics.
 
 ## 2. Problems Addressed
 
@@ -78,11 +78,11 @@ The developer specified a new capability matching real RF terminal behavior: tra
 **Root cause (dismiss):** the same class of bug as End LPN, found immediately after fixing it — error/info dialogs typically carry no `ctrl_keys` of their own, and the "Previous Screen" key lookup (§2.6) recomputed fresh from every response, falling back to a hardcoded `W` when the current response had none. On a screen whose real key was `F2`, this silently sent the wrong key; confirmed via the on-device debug sheet showing byte-for-byte the same `htmlrfid` and response before and after tapping OK.
 **Fix (dismiss):** the last known-good "Previous Screen" key is now persisted across responses and only overwritten when a response actually supplies a fresh match, rather than being reset on every build.
 
-### 2.12 Project split: `ksap_redwood_v2` (POC) → `japra_redwood_v3` (active development)
+### 2.12 Project split: `redwood_v2` (POC) → `japra_redwood_v3` (active development)
 At the developer's request (2026-07-10), the codebase was forked so the demonstrated/tested POC (`v2`) stays untouched as a reference while all further customization work happens in a separate `v3` folder.
 - **Mechanics:** `v3` was created as a full folder copy of `v2` (robocopy, same exclusions used for the dated backups: `build`, `.dart_tool`, `.gradle`, `.idea`, `android\.gradle`), then re-identified as its own distinct app so both can be installed on the same test device simultaneously: Android `applicationId`/Kotlin package (`MainActivity.kt` moved to a new package directory); Android app label; `MaterialApp.title`; matching renames across the Windows (`CMakeLists.txt`, `Runner.rc`, `main.cpp`), web (`manifest.json`, `index.html`), and iOS/macOS/Linux boilerplate, plus `test/widget_test.dart`'s import.
 - **Rebrand (2026-07-23):** the client is moving forward under the "Japra" name, so every identifier and visible string from the original fork was retired app-wide. Same structural-rename mechanics as above: pubspec `name` → `japra_redwood_v3`; Android `applicationId`/Kotlin package → `com.example.japra_redwood_v3`; iOS/macOS bundle IDs → `com.example.japraRedwoodV3`; Windows/Linux binary + application IDs → `japra_redwood_v3`; visible app title/login heading → "Japra WMS Mobile"; new "JP" monogram app icon (generated, `#2A4B54` background) applied via `flutter_launcher_icons` across Android/iOS/macOS/web. Applied to a fresh copy of the folder at `C:\dev\japra_redwood_v3` (the prior folder is being retired once the new copy is confirmed working). The `flow_test`/`flow` WMS environment entries in `app_config.dart` were deliberately left untouched — they're real, user-editable Oracle instance connections, unrelated to app branding.
-- **Verified live**: both `com.example.ksap_redwood_v2` and `com.example.japra_redwood_v3` confirmed installed side-by-side on the Nokia C01 Plus test device, each launching independently.
+- **Verified live**: both `com.example.redwood_v2` and `com.example.japra_redwood_v3` confirmed installed side-by-side on the Nokia C01 Plus test device, each launching independently.
 - `docs/*.md` were copied as-is into `v3` at fork time and described only `v2`'s history until the 2026-07-10 update — a known, expected gap between the fork and that document refresh, not a bug.
 
 ### 2.13 New feature: scan and calendar-date helpers on every entry field
@@ -169,7 +169,7 @@ Several plausible-sounding theories were proposed, tested live, and explicitly d
 A full source backup of `v2` (excluding build artifacts / `.dart_tool` / `.gradle` caches) was taken at the end of the `v2` working session and re-synced later the same day to capture the TAB navigation feature, its four rollout fixes, and that documentation set:
 
 ```
-C:\dev\ksap_redwood_v2_backup_2026-07-09
+C:\dev\redwood_v2_backup_2026-07-09
 ```
 
-This mirrors the convention of the prior backup at `C:\dev\ksap_redwood_v2_backup_2026-07-07`. `v3` itself (created 2026-07-10, see §2.12) is a full, independent folder copy — originally `C:\dev\ksap_redwood_v3`, since re-copied to `C:\dev\japra_redwood_v3` as part of the 2026-07-23 rebrand — rather than a dated backup snapshot, since it's the active working copy rather than a point-in-time archive; no separate backup of `v3` has been requested or taken as of this document's date.
+This mirrors the convention of the prior backup at `C:\dev\redwood_v2_backup_2026-07-07`. `v3` itself (created 2026-07-10, see §2.12) is a full, independent folder copy — originally `C:\dev\redwood_v3`, since re-copied to `C:\dev\japra_redwood_v3` as part of the 2026-07-23 rebrand — rather than a dated backup snapshot, since it's the active working copy rather than a point-in-time archive; no separate backup of `v3` has been requested or taken as of this document's date.

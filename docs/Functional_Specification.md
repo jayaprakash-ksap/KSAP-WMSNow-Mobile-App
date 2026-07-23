@@ -4,7 +4,7 @@
 **Platform:** Android (primary), iOS/desktop/web also buildable from the same Flutter codebase
 **Version:** 0.1.0
 **Date:** 2026-07-10
-**Project lineage:** `japra_redwood_v3` is a fork of `ksap_redwood_v2`, created 2026-07-10 as the active development line — `v2` is kept as a frozen, already-demonstrated POC snapshot and is not modified further; all customization work described below (from §4.5 onward, "as of v3") lives only in `v3`. Both can be installed on the same test device simultaneously (distinct package IDs: `com.example.ksap_redwood_v2` vs `com.example.japra_redwood_v3`).
+**Project lineage:** `japra_redwood_v3` is a fork of the prior `redwood_v2` codebase, created 2026-07-10 as the active development line — `v2` is kept as a frozen, already-demonstrated POC snapshot and is not modified further; all customization work described below (from §4.5 onward, "as of v3") lives only in `v3`. Both can be installed on the same test device simultaneously (distinct package IDs: `com.example.redwood_v2` vs `com.example.japra_redwood_v3`).
 
 ---
 

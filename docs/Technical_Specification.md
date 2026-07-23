@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-10
 **Codebase version referenced:** `lib/main.dart`, `lib/services/`, `lib/config/` as of this date (see `docs/Solution_Document.md` for the day's change log)
-**Project lineage:** Forked from `ksap_redwood_v2` on 2026-07-10 as the active development line (see `docs/Solution_Document.md` §2.12 for the fork mechanics: package/app renaming so both builds coexist on one device). `v2` remains untouched as the demonstrated POC snapshot — everything from §4.7 onward in this document describes `v3`-only work.
+**Project lineage:** Forked from the prior `redwood_v2` codebase on 2026-07-10 as the active development line (see `docs/Solution_Document.md` §2.12 for the fork mechanics: package/app renaming so both builds coexist on one device). `v2` remains untouched as the demonstrated POC snapshot — everything from §4.7 onward in this document describes `v3`-only work.
 
 ---
 
