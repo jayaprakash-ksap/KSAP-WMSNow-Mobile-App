@@ -71,6 +71,15 @@ class Environment {
       );
 }
 
+/// Where captured photos/signatures get uploaded - see UploadService and
+/// tools/captured_files_receiver.py. `baseUrl` empty means unconfigured.
+class UploadServerConfig {
+  final String baseUrl;
+  final String token;
+  const UploadServerConfig({required this.baseUrl, required this.token});
+  bool get isConfigured => baseUrl.trim().isNotEmpty;
+}
+
 /// Central configuration. For a real build, move clientSecret to a backend and
 /// have the app call your backend for the token (a device binary cannot safely
 /// hold a confidential secret). This is test-grade: direct-to-WMS.
@@ -138,6 +147,31 @@ class AppConfig {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
         _environmentsPrefsKey, jsonEncode(envs.map((e) => e.toJson()).toList()));
+  }
+
+  // ---- Upload server (2026-07-23) ----
+  //
+  // Where UploadService sends captured photos/signatures - see
+  // tools/captured_files_receiver.py. Empty baseUrl means the feature is
+  // off (unconfigured devices keep today's local-storage-only behavior,
+  // still reachable via the in-app Share sheet).
+  static const _uploadServerPrefsKey = 'oracle_custom_app_upload_server';
+
+  static Future<UploadServerConfig> loadUploadServer() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_uploadServerPrefsKey);
+    if (raw == null) return const UploadServerConfig(baseUrl: '', token: '');
+    final decoded = jsonDecode(raw) as Map<String, dynamic>;
+    return UploadServerConfig(
+      baseUrl: (decoded['baseUrl'] ?? '') as String,
+      token: (decoded['token'] ?? '') as String,
+    );
+  }
+
+  static Future<void> saveUploadServer(UploadServerConfig config) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_uploadServerPrefsKey,
+        jsonEncode({'baseUrl': config.baseUrl, 'token': config.token}));
   }
 
   // Set by LoginScreen the moment the operator picks an environment from the

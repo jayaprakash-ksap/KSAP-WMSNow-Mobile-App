@@ -253,4 +253,57 @@ class RwmobileService {
     );
     return res.statusCode >= 200 && res.statusCode < 300;
   }
+
+  // ---- lgfapi: generic list/action calls (POD, 2026-07-23) ----
+  //
+  // Unlike findEntity()/patchField() above (built narrowly for the Truck
+  // Temp single-record lookup/update), POD needs raw access to whatever
+  // shape a given lgfapi path returns - lists of ids, nested sub-resource
+  // collections (.../container/{id}/orders/), and no-body action endpoints
+  // (.../mark_delivered/). These two are intentionally thin passthroughs;
+  // PodService owns interpreting the response shape per call site.
+
+  /// GET `$lgfapiBase$path` with [query] as `&`-joined filters. Returns the
+  /// decoded JSON body as-is (caller reads `results`/`result_count`/etc) -
+  /// never throws on a non-2xx/non-JSON response, matching _post()'s
+  /// robustness so one bad call can't hang the POD screen.
+  Future<Map<String, dynamic>> lgfapiGet(String path,
+      [Map<String, String> query = const {}]) async {
+    final qs = query.entries
+        .map((e) => '${e.key}=${Uri.encodeComponent(e.value)}')
+        .join('&');
+    final url = '${AppConfig.lgfapiBase}$path${qs.isEmpty ? '' : '?$qs'}';
+    final res = await _client.get(
+      Uri.parse(url),
+      headers: {'Authorization': 'Bearer ${auth.session!.accessToken}'},
+    );
+    try {
+      final decoded = jsonDecode(res.body);
+      final data = decoded is Map<String, dynamic>
+          ? decoded
+          : {'results': decoded};
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        return {'_status': res.statusCode, ...data};
+      }
+      return data;
+    } catch (_) {
+      return {'_error': 'Non-JSON response', '_status': res.statusCode};
+    }
+  }
+
+  /// POST `$lgfapiBase$path` with an optional JSON [body] - used for
+  /// no-payload action endpoints like `mark_delivered`. Returns whether the
+  /// response was 2xx.
+  Future<bool> lgfapiPost(String path, [Map<String, dynamic>? body]) async {
+    final url = '${AppConfig.lgfapiBase}$path';
+    final res = await _client.post(
+      Uri.parse(url),
+      headers: {
+        'Authorization': 'Bearer ${auth.session!.accessToken}',
+        'Content-Type': 'application/json',
+      },
+      body: body == null ? null : jsonEncode(body),
+    );
+    return res.statusCode >= 200 && res.statusCode < 300;
+  }
 }

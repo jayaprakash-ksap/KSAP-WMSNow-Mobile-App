@@ -6,8 +6,11 @@ import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:path_provider/path_provider.dart';
 import 'config/app_config.dart';
+import 'pod/captured_files_screen.dart';
+import 'pod/pod_screen.dart';
 import 'services/auth_service.dart';
 import 'services/rwmobile_service.dart';
+import 'services/upload_service.dart';
 
 void main() => runApp(const JapraApp());
 
@@ -892,6 +895,21 @@ class _RuntimeScreenState extends State<RuntimeScreen> {
       body = _MenuView(
         content: content,
         onSelect: (index, name) {
+          if (name == 'POD - Proof of Delivery') {
+            // Bespoke screen, not an RF transaction - see _MenuView's doc
+            // comment on the synthetic entry. Pushed on top of the current
+            // mainmenu rather than routed through _send()/sendInput(), so
+            // the live RF session (clientid/htmlrfid) is completely
+            // untouched while the operator is on POD.
+            Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => PodScreen(
+                rw: _rw,
+                facCode: _facCode,
+                compCode: _compCode,
+              ),
+            ));
+            return;
+          }
           _currentTransactionName = name;
           // Fresh transaction - any shipment/Truck Temp state from whatever
           // was on screen before no longer applies.
@@ -986,6 +1004,13 @@ class _RuntimeScreenState extends State<RuntimeScreen> {
                 ]),
               ),
             ),
+          IconButton(
+            icon: const Icon(Icons.folder_open),
+            tooltip: 'Captured Files (photos/signatures)',
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => const CapturedFilesScreen(),
+            )),
+          ),
           IconButton(
             icon: const Icon(Icons.bug_report),
             tooltip: 'Debug: request/response history',
@@ -1320,6 +1345,23 @@ class _MenuView extends StatelessWidget {
     // 2026-07-09, see _RuntimeScreenState.build()) rather than a
     // mainmenu-only popup here, so every screen type gets the same menu.
 
+    // Synthetic entry (2026-07-23) - POD is a bespoke screen backed by
+    // direct OCWMS lgfapi calls, not an RF transaction, so there's no real
+    // server-side menu_button for it. Appended client-side after the real
+    // ones so it renders identically (same ListTile, next sequential screen
+    // number) but is never confused with genuine WMS menu content - detected
+    // by name (see the onSelect callback below) rather than a sentinel index,
+    // since the index now looks like a real one and must stay collision-safe
+    // if a real environment ever legitimately has that many menu items.
+    var maxIndex = 0;
+    for (final b in buttons) {
+      final n = int.tryParse(((b['value'] ?? {}) as Map)['index']?.toString() ?? '');
+      if (n != null && n > maxIndex) maxIndex = n;
+    }
+    buttons.add({
+      'value': {'index': '${maxIndex + 1}', 'name': 'POD - Proof of Delivery'},
+    });
+
     return ListView(
       padding: const EdgeInsets.all(12),
       children: buttons.map((b) {
@@ -1420,6 +1462,15 @@ class _ScreenViewState extends State<_ScreenView> {
     final ts = DateTime.now().millisecondsSinceEpoch;
     final destPath = '${folder.path}/SplitIBLPN_${safeLpn}_$ts.jpg';
     await File(photo.path).copy(destPath);
+    // Best-effort auto-upload (2026-07-23, see UploadService) - only
+    // deletes the local copy once the receiver confirms it, so an
+    // unconfigured/unreachable server just leaves it queued for Captured
+    // Files' "Sync Now" to pick up later, exactly like today.
+    final uploadConfig = await AppConfig.loadUploadServer();
+    if (uploadConfig.isConfigured &&
+        await UploadService.tryUpload(File(destPath), uploadConfig)) {
+      await File(destPath).delete();
+    }
     if (mounted) setState(() => _capturedPhoto = null);
   }
 

@@ -18,6 +18,11 @@ dependencies:
   # documents storage.
   image_picker: ^1.1.2
   path_provider: ^2.1.4
+  # Lets the operator pull files out of the app's private storage (captured
+  # photos/signatures) via Android's share sheet - added 2026-07-23 since
+  # neither `adb pull` nor `run-as` can reach private storage on a
+  # non-rooted device with a release (non-debuggable) build.
+  share_plus: ^10.1.2
   # Persists the operator-configurable environment list (2026-07-11) across
   # app launches - a plain XML/plist-backed key-value store, adequate for
   # this test-grade app (see AppConfig's existing note on clientSecret not
