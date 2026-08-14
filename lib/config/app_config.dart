@@ -125,14 +125,63 @@ class AppConfig {
 
   static const _environmentsPrefsKey = 'oracle_custom_app_environments';
 
+  // ---- Build-locked environments (APK distribution control, 2026-07-24) ----
+  //
+  // Problem: Manage Environments lets an operator add/edit/delete ANY
+  // domain/instance/client_id/client_secret - so anyone who gets hold of
+  // the APK can point it at a completely different customer's WMS instance.
+  // Fix: bake a customer's allowed environment(s) in at COMPILE TIME via
+  // --dart-define, so there's no UI path left to add a different one, even
+  // with valid credentials for it.
+  //
+  // To build a customer-locked release:
+  //   flutter build apk --release --dart-define=JAPRA_LOCKED_ENVIRONMENTS="name1#domain1#instance1,name2#domain2#instance2"
+  // e.g.:
+  //   flutter build apk --release --dart-define=JAPRA_LOCKED_ENVIRONMENTS="flow_test#https://tb2.wms.ocs.oraclecloud.com#flow_test,flow#https://b2.wms.ocs.oraclecloud.com#flow"
+  // Entries are comma-separated, fields within an entry are `#`-separated -
+  // NOT `;` or `|`, both of which get mangled on Windows (flutter is a
+  // .bat file; a literal `|` in a --dart-define value gets reinterpreted
+  // as a real pipe by the underlying cmd.exe invocation even when quoted,
+  // confirmed live 2026-07-24 - "'https:' is not recognized..." was cmd
+  // trying to run everything after the `|` as a new command).
+  //
+  // Left unset (the default - every build so far, including all of today's
+  // dev/testing), this is a no-op: isLocked is false and _seedEnvironments
+  // is used exactly as before. client_id/client_secret are still never
+  // baked in here either way (see the note above) - the operator fills
+  // those in per device regardless of whether the build is locked.
+  static const String _lockedEnvironmentsDefine =
+      String.fromEnvironment('JAPRA_LOCKED_ENVIRONMENTS');
+
+  static bool get isLocked => _lockedEnvironmentsDefine.trim().isNotEmpty;
+
+  static List<Environment> _parseLockedEnvironments() {
+    return _lockedEnvironmentsDefine.split(',').where((e) => e.trim().isNotEmpty).map((entry) {
+      final parts = entry.split('#');
+      return Environment(
+        name: parts[0],
+        domain: parts.length > 1 ? parts[1] : '',
+        instance: parts.length > 2 ? parts[2] : '',
+        clientId: '',
+        clientSecret: '',
+      );
+    }).toList();
+  }
+
+  static List<Environment> get _effectiveSeedEnvironments =>
+      isLocked ? _parseLockedEnvironments() : _seedEnvironments;
+
   /// Reads the operator's saved environment list, seeding storage with
-  /// [_seedEnvironments] the very first time (empty/missing prefs key).
+  /// [_effectiveSeedEnvironments] the very first time (empty/missing prefs
+  /// key) - the locked list when this is a customer-locked build (see
+  /// isLocked above), otherwise the ordinary dev/test seed.
   static Future<List<Environment>> loadEnvironments() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_environmentsPrefsKey);
     if (raw == null) {
-      await saveEnvironments(_seedEnvironments);
-      return _seedEnvironments;
+      final seed = _effectiveSeedEnvironments;
+      await saveEnvironments(seed);
+      return seed;
     }
     final decoded = jsonDecode(raw) as List;
     return decoded

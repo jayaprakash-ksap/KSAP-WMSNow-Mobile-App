@@ -319,10 +319,15 @@ class _EnvironmentManagerScreenState extends State<EnvironmentManagerScreen> {
       appBar: AppBar(
         title: const Text('Manage Environments'),
         actions: [
-          IconButton(
-              icon: const Icon(Icons.add),
-              tooltip: 'Add environment',
-              onPressed: _add),
+          // Hidden entirely on a build-locked app (2026-07-24, see
+          // AppConfig.isLocked) - the seeded environment(s) are already the
+          // only ones this build can ever use, so there's nothing valid to
+          // add.
+          if (!AppConfig.isLocked)
+            IconButton(
+                icon: const Icon(Icons.add),
+                tooltip: 'Add environment',
+                onPressed: _add),
         ],
       ),
       body: _loading
@@ -356,11 +361,24 @@ class _EnvironmentManagerScreenState extends State<EnvironmentManagerScreen> {
                             tooltip: 'Edit',
                             onPressed: () => _edit(i),
                           ),
-                          IconButton(
-                            icon: const Icon(Icons.delete_outline),
-                            tooltip: 'Delete',
-                            onPressed: () => _delete(i),
-                          ),
+                          // Locked builds can't delete their seeded
+                          // environment(s) - doing so would leave the
+                          // operator stuck with no way to add a replacement
+                          // (Add is hidden too, see the AppBar above).
+                          if (AppConfig.isLocked)
+                            const Tooltip(
+                              message: 'Locked by this app build',
+                              child: Padding(
+                                padding: EdgeInsets.all(12),
+                                child: Icon(Icons.lock_outline, size: 20),
+                              ),
+                            )
+                          else
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline),
+                              tooltip: 'Delete',
+                              onPressed: () => _delete(i),
+                            ),
                         ]),
                       ),
                     );
@@ -441,8 +459,15 @@ class _EnvironmentFormDialogState extends State<_EnvironmentFormDialog> {
           // e.g. tb2.wms.ocs.oraclecloud.com vs b2.wms.ocs.oraclecloud.com -
           // confirmed live). Previously this wasn't configurable at all and
           // silently used one fixed domain for every environment.
+          //
+          // Domain/Instance are read-only on a build-locked app (2026-07-24,
+          // see AppConfig.isLocked) - that's the whole point of the lock:
+          // no UI path to point this build at a different WMS host, even
+          // with valid credentials for it. Name/Client ID/Client Secret
+          // stay editable either way.
           TextField(
             controller: _domain,
+            enabled: !AppConfig.isLocked,
             decoration: const InputDecoration(
                 labelText: 'Domain',
                 hintText: 'e.g. https://tb2.wms.ocs.oraclecloud.com',
@@ -451,6 +476,7 @@ class _EnvironmentFormDialogState extends State<_EnvironmentFormDialog> {
           const SizedBox(height: 12),
           TextField(
             controller: _instance,
+            enabled: !AppConfig.isLocked,
             decoration: const InputDecoration(
                 labelText: 'Instance (URL path segment)',
                 hintText: 'e.g. flow_test',
@@ -1325,6 +1351,57 @@ class _InfoView extends StatelessWidget {
       );
 }
 
+/// Best-effort keyword match from a menu item's name to a representative
+/// icon - added 2026-07-24 for a Flexi-Pro-style icon grid (see
+/// docs/CCI_Test_Installation&Connection_Guide.pdf for the reference). Oracle's
+/// mainmenu response only ever sends {index, name} - no icon data - so this
+/// is entirely client-side guesswork keyed on the visible label text, same
+/// as every other name-based match in this app (AppConfig.enhPageTitleMatch
+/// etc). Checked in order, first match wins - more specific phrases are
+/// listed before the generic keywords they'd otherwise be shadowed by (e.g.
+/// "cycle count" before the bare "count").
+IconData _iconForMenuItem(String name) {
+  final n = name.toLowerCase();
+  const mapping = <MapEntry<String, IconData>>[
+    MapEntry('proof of delivery', Icons.assignment_turned_in),
+    MapEntry('cycle count', Icons.fact_check),
+    MapEntry('count', Icons.fact_check),
+    MapEntry('putaway', Icons.warehouse),
+    MapEntry('put away', Icons.warehouse),
+    MapEntry('receiv', Icons.move_to_inbox),
+    MapEntry('pick', Icons.shopping_basket),
+    MapEntry('pack', Icons.inventory_2),
+    MapEntry('ship', Icons.local_shipping),
+    MapEntry('load', Icons.local_shipping),
+    MapEntry('repalletiz', Icons.autorenew),
+    MapEntry('wrap', Icons.layers),
+    MapEntry('pallet', Icons.view_module),
+    MapEntry('carton', Icons.inventory),
+    MapEntry('box', Icons.inventory),
+    MapEntry('lpn', Icons.qr_code),
+    MapEntry('lock', Icons.lock),
+    MapEntry('adjust', Icons.tune),
+    MapEntry('transfer', Icons.swap_horiz),
+    MapEntry('locate', Icons.pin_drop),
+    MapEntry('move', Icons.swap_horiz),
+    MapEntry('return', Icons.assignment_return),
+    MapEntry('consumable', Icons.category),
+    MapEntry('machine', Icons.precision_manufacturing),
+    MapEntry('issue', Icons.report_problem),
+    MapEntry('short', Icons.report_problem),
+    MapEntry('damage', Icons.report_problem),
+    MapEntry('dock', Icons.garage),
+    MapEntry('replenish', Icons.refresh),
+    MapEntry('order', Icons.receipt_long),
+    MapEntry('task', Icons.play_circle_outline),
+    MapEntry('inventory', Icons.inventory_2),
+  ];
+  for (final e in mapping) {
+    if (n.contains(e.key)) return e.value;
+  }
+  return Icons.touch_app;
+}
+
 class _MenuView extends StatelessWidget {
   final Map<String, dynamic> content;
   final void Function(String index, String name) onSelect;
@@ -1362,20 +1439,53 @@ class _MenuView extends StatelessWidget {
       'value': {'index': '${maxIndex + 1}', 'name': 'POD - Proof of Delivery'},
     });
 
-    return ListView(
-      padding: const EdgeInsets.all(12),
-      children: buttons.map((b) {
-        final v = (b['value'] ?? {}) as Map;
-        final idx = (v['index'] ?? '').toString();
-        final name = (v['name'] ?? '').toString();
-        return Card(
-          child: ListTile(
-            leading: CircleAvatar(child: Text(idx)),
-            title: Text(name),
-            onTap: () => onSelect(idx, name),
+    // Icon grid (2026-07-24), replacing the earlier plain numbered list -
+    // matches the Flexi Pro reference's icon-per-transaction mobile layout.
+    // Wider windows (desktop) get more columns rather than staying pinned
+    // at 2 - same GridView, just a width-derived crossAxisCount.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final crossAxisCount = (constraints.maxWidth / 180).floor().clamp(2, 6);
+        return GridView.builder(
+          padding: const EdgeInsets.all(12),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: crossAxisCount,
+            mainAxisSpacing: 12,
+            crossAxisSpacing: 12,
+            childAspectRatio: 1.1,
           ),
+          itemCount: buttons.length,
+          itemBuilder: (context, i) {
+            final v = (buttons[i]['value'] ?? {}) as Map;
+            final idx = (v['index'] ?? '').toString();
+            final name = (v['name'] ?? '').toString();
+            return Card(
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: () => onSelect(idx, name),
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(_iconForMenuItem(name),
+                          size: 36, color: Theme.of(context).colorScheme.primary),
+                      const SizedBox(height: 8),
+                      Text(
+                        name,
+                        textAlign: TextAlign.center,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
         );
-      }).toList(),
+      },
     );
   }
 }
