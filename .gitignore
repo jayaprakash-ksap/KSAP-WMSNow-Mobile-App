@@ -52,8 +52,6 @@ app.*.map.json
 # not source.
 /captured_images/
 
-# Persistent copy of a locked-build Windows exe for manually re-checking
-# APK-distribution-control behavior (see AppConfig.isLocked) without it
-# being overwritten by the next ordinary `flutter build windows` - a
-# compiled binary, not source.
-/locked_test_build/
+# Customer-locked APKs from tools/generate_customer_apk.py - these have
+# live OAuth client_id/client_secret compiled in, must never be committed.
+/customer_builds/

@@ -357,8 +357,13 @@ class _EnvironmentManagerScreenState extends State<EnvironmentManagerScreen> {
                         trailing:
                             Row(mainAxisSize: MainAxisSize.min, children: [
                           IconButton(
-                            icon: const Icon(Icons.edit),
-                            tooltip: 'Edit',
+                            // Every field is read-only on a locked build
+                            // (2026-07-24) - "Edit" would be misleading, so
+                            // this becomes a plain view action instead.
+                            icon: Icon(AppConfig.isLocked
+                                ? Icons.visibility_outlined
+                                : Icons.edit),
+                            tooltip: AppConfig.isLocked ? 'View' : 'Edit',
                             onPressed: () => _edit(i),
                           ),
                           // Locked builds can't delete their seeded
@@ -442,12 +447,16 @@ class _EnvironmentFormDialogState extends State<_EnvironmentFormDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text(
-          widget.existing == null ? 'Add Environment' : 'Edit Environment'),
+      title: Text(AppConfig.isLocked
+          ? 'Environment (locked by this app build)'
+          : widget.existing == null
+              ? 'Add Environment'
+              : 'Edit Environment'),
       content: SingleChildScrollView(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           TextField(
             controller: _name,
+            enabled: !AppConfig.isLocked,
             decoration: const InputDecoration(
                 labelText: 'Name',
                 hintText: 'e.g. flow_test',
@@ -460,11 +469,14 @@ class _EnvironmentFormDialogState extends State<_EnvironmentFormDialog> {
           // confirmed live). Previously this wasn't configurable at all and
           // silently used one fixed domain for every environment.
           //
-          // Domain/Instance are read-only on a build-locked app (2026-07-24,
-          // see AppConfig.isLocked) - that's the whole point of the lock:
-          // no UI path to point this build at a different WMS host, even
-          // with valid credentials for it. Name/Client ID/Client Secret
-          // stay editable either way.
+          // Every field, including Client ID/Secret, is read-only on a
+          // build-locked app (revised 2026-07-24 - previously only
+          // Domain/Instance were locked, with the operator still filling in
+          // credentials per device; now the whole environment is baked in
+          // at build time by tools/generate_customer_apk.py, so there's
+          // nothing left for the UI to let anyone edit). A credential
+          // change means generating and redistributing a new APK, not
+          // editing one in place - see AppConfig.isLocked's doc comment.
           TextField(
             controller: _domain,
             enabled: !AppConfig.isLocked,
@@ -485,12 +497,14 @@ class _EnvironmentFormDialogState extends State<_EnvironmentFormDialog> {
           const SizedBox(height: 12),
           TextField(
             controller: _clientId,
+            enabled: !AppConfig.isLocked,
             decoration: const InputDecoration(
                 labelText: 'OAuth Client ID', border: OutlineInputBorder()),
           ),
           const SizedBox(height: 12),
           TextField(
             controller: _clientSecret,
+            enabled: !AppConfig.isLocked,
             decoration: const InputDecoration(
                 labelText: 'OAuth Client Secret', border: OutlineInputBorder()),
             maxLines: 2,
@@ -501,12 +515,18 @@ class _EnvironmentFormDialogState extends State<_EnvironmentFormDialog> {
           ],
         ]),
       ),
-      actions: [
-        TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel')),
-        FilledButton(onPressed: _save, child: const Text('Save')),
-      ],
+      actions: AppConfig.isLocked
+          ? [
+              FilledButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Close')),
+            ]
+          : [
+              TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancel')),
+              FilledButton(onPressed: _save, child: const Text('Save')),
+            ],
     );
   }
 }

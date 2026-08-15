@@ -130,14 +130,15 @@ class AppConfig {
   // Problem: Manage Environments lets an operator add/edit/delete ANY
   // domain/instance/client_id/client_secret - so anyone who gets hold of
   // the APK can point it at a completely different customer's WMS instance.
-  // Fix: bake a customer's allowed environment(s) in at COMPILE TIME via
-  // --dart-define, so there's no UI path left to add a different one, even
-  // with valid credentials for it.
+  // Fix: bake a customer's whole environment (including client_id/secret,
+  // as of 2026-07-24 - see below) in at COMPILE TIME via --dart-define, so
+  // there's no UI path left to change any of it, and the customer's own
+  // operator never has to be handed OAuth credentials to type in.
   //
-  // To build a customer-locked release:
-  //   flutter build apk --release --dart-define=JAPRA_LOCKED_ENVIRONMENTS="name1#domain1#instance1,name2#domain2#instance2"
-  // e.g.:
-  //   flutter build apk --release --dart-define=JAPRA_LOCKED_ENVIRONMENTS="flow_test#https://tb2.wms.ocs.oraclecloud.com#flow_test,flow#https://b2.wms.ocs.oraclecloud.com#flow"
+  // Prefer tools/generate_customer_apk.py over building this by hand - it
+  // prompts for each field (hiding the secret as you type) and builds the
+  // dart-define string correctly. The raw format, if needed directly:
+  //   flutter build apk --release --dart-define=JAPRA_LOCKED_ENVIRONMENTS="name1#domain1#instance1#clientId1#clientSecret1,name2#domain2#instance2#clientId2#clientSecret2"
   // Entries are comma-separated, fields within an entry are `#`-separated -
   // NOT `;` or `|`, both of which get mangled on Windows (flutter is a
   // .bat file; a literal `|` in a --dart-define value gets reinterpreted
@@ -145,11 +146,19 @@ class AppConfig {
   // confirmed live 2026-07-24 - "'https:' is not recognized..." was cmd
   // trying to run everything after the `|` as a new command).
   //
+  // 2026-07-24 revision: client_id/client_secret are now ALSO baked in here
+  // (previously only domain/instance were, and the operator filled in
+  // credentials per device via the UI). This doesn't reintroduce the
+  // "secrets committed to git" problem the 2026-07-23 change fixed -
+  // --dart-define values are a build-time argument, never written to
+  // source/git, only into that one customer's compiled APK. Every
+  // environment field is read-only in Manage Environments when isLocked
+  // (see _EnvironmentFormDialog) - a credential change means generating and
+  // redistributing a new APK, not editing one in place.
+  //
   // Left unset (the default - every build so far, including all of today's
   // dev/testing), this is a no-op: isLocked is false and _seedEnvironments
-  // is used exactly as before. client_id/client_secret are still never
-  // baked in here either way (see the note above) - the operator fills
-  // those in per device regardless of whether the build is locked.
+  // is used exactly as before.
   static const String _lockedEnvironmentsDefine =
       String.fromEnvironment('JAPRA_LOCKED_ENVIRONMENTS');
 
@@ -162,26 +171,29 @@ class AppConfig {
         name: parts[0],
         domain: parts.length > 1 ? parts[1] : '',
         instance: parts.length > 2 ? parts[2] : '',
-        clientId: '',
-        clientSecret: '',
+        clientId: parts.length > 3 ? parts[3] : '',
+        clientSecret: parts.length > 4 ? parts[4] : '',
       );
     }).toList();
   }
 
-  static List<Environment> get _effectiveSeedEnvironments =>
-      isLocked ? _parseLockedEnvironments() : _seedEnvironments;
-
   /// Reads the operator's saved environment list, seeding storage with
-  /// [_effectiveSeedEnvironments] the very first time (empty/missing prefs
-  /// key) - the locked list when this is a customer-locked build (see
-  /// isLocked above), otherwise the ordinary dev/test seed.
+  /// [_seedEnvironments] the very first time (empty/missing prefs key).
+  ///
+  /// A locked build (isLocked) never touches SharedPreferences at all -
+  /// always returns the compiled-in list fresh from
+  /// _parseLockedEnvironments() directly. Deliberate: since every field is
+  /// baked in and read-only anyway, going through persisted storage would
+  /// only risk loading stale data left over from before a device was ever
+  /// locked (a real case hit live 2026-07-24, re-testing on a machine that
+  /// had previously run an unlocked build).
   static Future<List<Environment>> loadEnvironments() async {
+    if (isLocked) return _parseLockedEnvironments();
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_environmentsPrefsKey);
     if (raw == null) {
-      final seed = _effectiveSeedEnvironments;
-      await saveEnvironments(seed);
-      return seed;
+      await saveEnvironments(_seedEnvironments);
+      return _seedEnvironments;
     }
     final decoded = jsonDecode(raw) as List;
     return decoded
