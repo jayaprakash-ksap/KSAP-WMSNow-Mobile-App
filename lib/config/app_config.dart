@@ -71,6 +71,24 @@ class Environment {
       );
 }
 
+/// Which client-side add-ons (built for one specific customer, not part of
+/// the generic RF renderer) are currently active - see AppConfig.currentFlags
+/// for how this is loaded/applied. Unlike environment locking, this is
+/// deliberately a runtime, admin-editable-any-time toggle, not a
+/// build-time-only one (2026-07-25 decision) - flipping it takes effect
+/// immediately, no rebuild/reinstall needed.
+class FeatureFlags {
+  final bool podEnabled;
+  final bool truckTempEnabled;
+  const FeatureFlags(
+      {required this.podEnabled, required this.truckTempEnabled});
+
+  // Base app ships with no customer-specific customizations active - each
+  // one is opt-in per device via Feature Settings, not on by default.
+  static const defaults =
+      FeatureFlags(podEnabled: false, truckTempEnabled: false);
+}
+
 /// Where captured photos/signatures get uploaded - see UploadService and
 /// tools/captured_files_receiver.py. `baseUrl` empty means unconfigured.
 class UploadServerConfig {
@@ -233,6 +251,43 @@ class AppConfig {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_uploadServerPrefsKey,
         jsonEncode({'baseUrl': config.baseUrl, 'token': config.token}));
+  }
+
+  // ---- Feature flags (2026-07-25) ----
+  //
+  // POD and Truck Temp were built for Flow Logistics specifically - CCI
+  // (and any future customer) may have none of that, just standard RF
+  // screens the generic renderer already handles. currentFlags is a plain
+  // static field (same idiom as `current` below for the selected
+  // Environment) - read synchronously from _MenuView/_ScreenView wherever
+  // an add-on needs to check whether it's active, loaded once in
+  // RuntimeScreen.initState() before the mainmenu can ever render, and
+  // updated immediately (memory + persisted) whenever FeatureSettingsScreen
+  // changes something - no restart required for a toggle to take effect.
+  static const _featureFlagsPrefsKey = 'oracle_custom_app_feature_flags';
+
+  static FeatureFlags currentFlags = FeatureFlags.defaults;
+
+  static Future<FeatureFlags> loadFeatureFlags() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_featureFlagsPrefsKey);
+    if (raw == null) return FeatureFlags.defaults;
+    final decoded = jsonDecode(raw) as Map<String, dynamic>;
+    return FeatureFlags(
+      podEnabled: (decoded['podEnabled'] ?? false) as bool,
+      truckTempEnabled: (decoded['truckTempEnabled'] ?? false) as bool,
+    );
+  }
+
+  static Future<void> saveFeatureFlags(FeatureFlags flags) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+        _featureFlagsPrefsKey,
+        jsonEncode({
+          'podEnabled': flags.podEnabled,
+          'truckTempEnabled': flags.truckTempEnabled,
+        }));
+    currentFlags = flags;
   }
 
   // Set by LoginScreen the moment the operator picks an environment from the

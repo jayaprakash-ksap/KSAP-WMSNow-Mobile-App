@@ -95,6 +95,12 @@ class _LoginScreenState extends State<LoginScreen> {
     await _loadEnvironments();
   }
 
+  Future<void> _openFeatureSettings() async {
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => const FeatureSettingsScreen(),
+    ));
+  }
+
   Future<void> _login() async {
     if (_selectedEnv == null) {
       setState(() => _error = 'Select an environment first.');
@@ -129,6 +135,11 @@ class _LoginScreenState extends State<LoginScreen> {
     return Scaffold(
       appBar: AppBar(
         actions: [
+          IconButton(
+            icon: const Icon(Icons.tune),
+            tooltip: 'Feature Settings',
+            onPressed: _openFeatureSettings,
+          ),
           IconButton(
             icon: const Icon(Icons.settings),
             tooltip: 'Manage Environments',
@@ -395,6 +406,72 @@ class _EnvironmentManagerScreenState extends State<EnvironmentManagerScreen> {
 
 String instanceUrlPreview(Environment env) => '${env.domain}/${env.instance}/';
 
+/// Lets an admin turn customer-specific client-side add-ons (POD, Truck
+/// Temp - see FeatureFlags' doc comment) on or off at any time, not just at
+/// build time - reached from the Login screen, same open-access precedent
+/// as Manage Environments (no PIN/login-role system exists in this app).
+/// Each toggle applies immediately (persisted + AppConfig.currentFlags
+/// updated together in AppConfig.saveFeatureFlags) - no restart needed.
+class FeatureSettingsScreen extends StatefulWidget {
+  const FeatureSettingsScreen({super.key});
+  @override
+  State<FeatureSettingsScreen> createState() => _FeatureSettingsScreenState();
+}
+
+class _FeatureSettingsScreenState extends State<FeatureSettingsScreen> {
+  FeatureFlags _flags = FeatureFlags.defaults;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final flags = await AppConfig.loadFeatureFlags();
+    if (!mounted) return;
+    setState(() {
+      _flags = flags;
+      _loading = false;
+    });
+  }
+
+  Future<void> _set(FeatureFlags flags) async {
+    setState(() => _flags = flags);
+    await AppConfig.saveFeatureFlags(flags);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Feature Settings')),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : ListView(
+              children: [
+                SwitchListTile(
+                  title: const Text('POD (Proof of Delivery)'),
+                  subtitle: const Text(
+                      'Adds a POD entry to the main menu - built for Flow Logistics.'),
+                  value: _flags.podEnabled,
+                  onChanged: (v) =>
+                      _set(FeatureFlags(podEnabled: v, truckTempEnabled: _flags.truckTempEnabled)),
+                ),
+                SwitchListTile(
+                  title: const Text('Truck Temp'),
+                  subtitle: const Text(
+                      'Injects a Truck Temp field during receiving - built for Flow Logistics.'),
+                  value: _flags.truckTempEnabled,
+                  onChanged: (v) =>
+                      _set(FeatureFlags(podEnabled: _flags.podEnabled, truckTempEnabled: v)),
+                ),
+              ],
+            ),
+    );
+  }
+}
+
 class _EnvironmentFormDialog extends StatefulWidget {
   final Environment? existing;
   const _EnvironmentFormDialog({this.existing});
@@ -634,6 +711,10 @@ class _RuntimeScreenState extends State<RuntimeScreen> {
   Future<void> _bootstrap() async {
     if (_started) return;
     _started = true;
+    // Must finish before the mainmenu can ever render, since _MenuView
+    // reads AppConfig.currentFlags synchronously (see FeatureFlags' doc
+    // comment) - awaited here rather than fired-and-forgotten.
+    AppConfig.currentFlags = await AppConfig.loadFeatureFlags();
     await _send(() => _rw.start(), isBootstrap: true);
   }
 
@@ -978,7 +1059,8 @@ class _RuntimeScreenState extends State<RuntimeScreen> {
           // point at which its value is final - look up whether this
           // shipment already has a Truck Temp recorded (see
           // _lookupTruckTemp's doc comment).
-          if (value.isNotEmpty &&
+          if (AppConfig.currentFlags.truckTempEnabled &&
+              value.isNotEmpty &&
               label.toLowerCase().contains(AppConfig.enhLookupLabelMatch)) {
             await _lookupTruckTemp(value);
           }
@@ -1151,9 +1233,15 @@ class _DebugSheet extends StatelessWidget {
             const Divider(color: Colors.white24, height: 24),
             for (var i = 0; i < reversed.length; i++) ...[
               Text(
-                '#${reversed.length - i} • ${reversed[i].at.hour.toString().padLeft(2, '0')}:${reversed[i].at.minute.toString().padLeft(2, '0')}:${reversed[i].at.second.toString().padLeft(2, '0')}',
-                style: const TextStyle(
-                    color: Colors.white54,
+                '#${reversed.length - i} • ${reversed[i].at.hour.toString().padLeft(2, '0')}:${reversed[i].at.minute.toString().padLeft(2, '0')}:${reversed[i].at.second.toString().padLeft(2, '0')}'
+                ' • ${reversed[i].elapsed.inMilliseconds}ms',
+                style: TextStyle(
+                    // Flagged orange past 800ms so a slow one is easy to
+                    // spot while scrolling a long history, without implying
+                    // any fixed "correct" threshold.
+                    color: reversed[i].elapsed.inMilliseconds > 800
+                        ? const Color(0xFFF5A623)
+                        : Colors.white54,
                     fontSize: 11,
                     fontWeight: FontWeight.bold),
               ),
@@ -1450,14 +1538,21 @@ class _MenuView extends StatelessWidget {
     // by name (see the onSelect callback below) rather than a sentinel index,
     // since the index now looks like a real one and must stay collision-safe
     // if a real environment ever legitimately has that many menu items.
-    var maxIndex = 0;
-    for (final b in buttons) {
-      final n = int.tryParse(((b['value'] ?? {}) as Map)['index']?.toString() ?? '');
-      if (n != null && n > maxIndex) maxIndex = n;
+    //
+    // Built for Flow Logistics specifically - gated behind
+    // AppConfig.currentFlags.podEnabled (2026-07-25) so customers with no
+    // POD concept (e.g. CCI) never see it. Off by default - see
+    // FeatureSettingsScreen to turn it on.
+    if (AppConfig.currentFlags.podEnabled) {
+      var maxIndex = 0;
+      for (final b in buttons) {
+        final n = int.tryParse(((b['value'] ?? {}) as Map)['index']?.toString() ?? '');
+        if (n != null && n > maxIndex) maxIndex = n;
+      }
+      buttons.add({
+        'value': {'index': '${maxIndex + 1}', 'name': 'POD - Proof of Delivery'},
+      });
     }
-    buttons.add({
-      'value': {'index': '${maxIndex + 1}', 'name': 'POD - Proof of Delivery'},
-    });
 
     // Icon grid (2026-07-24), replacing the earlier plain numbered list -
     // matches the Flexi Pro reference's icon-per-transaction mobile layout.
@@ -1715,10 +1810,14 @@ class _ScreenViewState extends State<_ScreenView> {
 
       // INJECTION: Truck Temp before the LPN field - only on the one
       // transaction this enhancement is scoped to (AppConfig.enhPageTitleMatch),
-      // not every screen that happens to have an "lpn"-labeled field.
-      final onTruckTempScreen = widget.transactionName
-          .toLowerCase()
-          .contains(AppConfig.enhPageTitleMatch);
+      // not every screen that happens to have an "lpn"-labeled field. Built
+      // for Flow Logistics specifically - also gated behind
+      // AppConfig.currentFlags.truckTempEnabled (2026-07-25), off by
+      // default, same as POD above.
+      final onTruckTempScreen = AppConfig.currentFlags.truckTempEnabled &&
+          widget.transactionName
+              .toLowerCase()
+              .contains(AppConfig.enhPageTitleMatch);
       if (onTruckTempScreen &&
           label.toLowerCase().contains(AppConfig.enhInsertBeforeLabel)) {
         // If this shipment already has a value on file, show it read-only

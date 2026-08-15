@@ -43,7 +43,12 @@ class RwExchange {
   // directly compare token consistency across the whole history instead of
   // only ever seeing "whatever the token is right now".
   final String token;
-  RwExchange(this.request, this.response, this.at, this.token);
+  // Wall-clock time for just the HTTP round-trip (request sent -> response
+  // received) - added 2026-07-26 to actually measure a reported "screens
+  // feel half a second slower" rather than guess whether it's the network/
+  // server or the app. Shown in the debug sheet.
+  final Duration elapsed;
+  RwExchange(this.request, this.response, this.at, this.token, this.elapsed);
 }
 
 class RwmobileService {
@@ -86,6 +91,7 @@ class RwmobileService {
       {bool retried = false}) async {
     lastRequest = payload;
     final tokenUsed = auth.session!.accessToken;
+    final started = DateTime.now();
     final res = await _client.post(
       Uri.parse(AppConfig.rwmobileUrl),
       headers: {
@@ -96,6 +102,7 @@ class RwmobileService {
       },
       body: jsonEncode(payload),
     );
+    final elapsed = DateTime.now().difference(started);
     final setCookie = res.headers['set-cookie'];
     if (setCookie != null) {
       // Only need the name=value pair, not the Path/Secure/HttpOnly
@@ -123,7 +130,7 @@ class RwmobileService {
       data = {'_status': res.statusCode, ...data};
     }
     lastResponse = data;
-    history.add(RwExchange(payload, data, DateTime.now(), tokenUsed));
+    history.add(RwExchange(payload, data, DateTime.now(), tokenUsed, elapsed));
     if (history.length > _maxHistory) history.removeAt(0);
     return data;
   }
