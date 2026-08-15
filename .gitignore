@@ -51,3 +51,9 @@ app.*.map.json
 # Photos captured on-device during Split IBLPN testing - local test data,
 # not source.
 /captured_images/
+
+# Persistent copy of a locked-build Windows exe for manually re-checking
+# APK-distribution-control behavior (see AppConfig.isLocked) without it
+# being overwritten by the next ordinary `flutter build windows` - a
+# compiled binary, not source.
+/locked_test_build/
