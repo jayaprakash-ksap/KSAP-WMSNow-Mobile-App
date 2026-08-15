@@ -19,7 +19,7 @@ class JapraApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Japra WMS Mobile',
+      title: AppConfig.appName,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2A4B54)),
         useMaterial3: true,
@@ -176,7 +176,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Text('Japra WMS Mobile',
+                    const Text(AppConfig.appName,
                         style: TextStyle(
                             fontSize: 24, fontWeight: FontWeight.bold)),
                     const Text('Oracle WMS Redwood client',

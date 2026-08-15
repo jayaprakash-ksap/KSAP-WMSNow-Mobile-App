@@ -107,6 +107,16 @@ class AppConfig {
   // now (see Environment's doc comment on why it can't be a shared constant).
   static const String defaultDomain = 'https://tb2.wms.ocs.oraclecloud.com';
 
+  // Baked in per customer build by tools/generate_customer_build.py
+  // (2026-07-26) - "<customer name> redwood", e.g. "ksap_test redwood".
+  // Unset (the default, every build so far) -> "Japra WMS Mobile", our own
+  // daily-dev/Flow app. Drives MaterialApp.title and the Login screen
+  // heading (lib/main.dart) - the Android app label and Windows window
+  // title/exe name are set separately, directly in the native platform
+  // files the generator script edits (dart-define can't reach those).
+  static const String appName =
+      String.fromEnvironment('JAPRA_APP_NAME', defaultValue: 'Japra WMS Mobile');
+
   // Seed environments - only ever used to populate persistent storage the
   // FIRST time the app runs (see loadEnvironments()). After that, the
   // persisted list is authoritative; the operator can add/edit/delete

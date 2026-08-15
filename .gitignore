@@ -56,3 +56,10 @@ app.*.map.json
 # APK + Windows zip) - these have live OAuth client_id/client_secret
 # compiled in, must never be committed.
 /customer_builds/
+
+# Stable, persistent copy of the plain unlocked daily-dev Windows build -
+# the desktop shortcut points here, not into /build/, specifically so
+# running generate_customer_build.py can never again silently overwrite it
+# (real incident, 2026-07-26 - both used to write to the same build/
+# output folder).
+/dev_build/
