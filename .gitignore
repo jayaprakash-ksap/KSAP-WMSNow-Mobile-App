@@ -52,6 +52,7 @@ app.*.map.json
 # not source.
 /captured_images/
 
-# Customer-locked APKs from tools/generate_customer_apk.py - these have
-# live OAuth client_id/client_secret compiled in, must never be committed.
+# Customer-locked builds from tools/generate_customer_build.py (Android
+# APK + Windows zip) - these have live OAuth client_id/client_secret
+# compiled in, must never be committed.
 /customer_builds/

@@ -473,7 +473,7 @@ class _EnvironmentFormDialogState extends State<_EnvironmentFormDialog> {
           // build-locked app (revised 2026-07-24 - previously only
           // Domain/Instance were locked, with the operator still filling in
           // credentials per device; now the whole environment is baked in
-          // at build time by tools/generate_customer_apk.py, so there's
+          // at build time by tools/generate_customer_build.py, so there's
           // nothing left for the UI to let anyone edit). A credential
           // change means generating and redistributing a new APK, not
           // editing one in place - see AppConfig.isLocked's doc comment.

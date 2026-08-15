@@ -135,7 +135,7 @@ class AppConfig {
   // there's no UI path left to change any of it, and the customer's own
   // operator never has to be handed OAuth credentials to type in.
   //
-  // Prefer tools/generate_customer_apk.py over building this by hand - it
+  // Prefer tools/generate_customer_build.py over building this by hand - it
   // prompts for each field (hiding the secret as you type) and builds the
   // dart-define string correctly. The raw format, if needed directly:
   //   flutter build apk --release --dart-define=JAPRA_LOCKED_ENVIRONMENTS="name1#domain1#instance1#clientId1#clientSecret1,name2#domain2#instance2#clientId2#clientSecret2"
