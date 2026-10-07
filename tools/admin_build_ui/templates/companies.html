@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Companies{% endblock %}
+{% block page_title %}Companies{% endblock %}
+{% block crumb %}<div class="crumb">Master customer list</div>{% endblock %}
+
+{% block content %}
+<div id="form-error" class="error-banner" style="display:none;"></div>
+
+<div class="card">
+  <h2>Companies</h2>
+  <div class="hint" style="margin-bottom: 8px;">
+    The real-world customer, defined once here instead of typed per build - this is what
+    the build form's Customer field, and a scoped user's Company, both pick from. Add each
+    one before creating its Instances (WMS environments) on the next page.
+  </div>
+  <div class="table-wrap">
+    <table class="log-table" id="companies-table">
+      <thead><tr><th>Company</th><th></th></tr></thead>
+      <tbody id="companies-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Add Company</h2>
+  <label for="new-company">Company name</label>
+  <input type="text" id="new-company" placeholder="e.g. Acme Corp">
+  <button type="button" class="btn-add" id="add-company-btn" style="margin-top: 12px;">+ Add company</button>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const errorBanner = document.getElementById('form-error');
+  const tbody = document.getElementById('companies-tbody');
+
+  function showError(msg) { errorBanner.textContent = msg; errorBanner.style.display = 'block'; }
+  function clearError() { errorBanner.style.display = 'none'; }
+
+  function renderCompanies(list) {
+    tbody.innerHTML = '';
+    list.forEach((name) => {
+      const tr = document.createElement('tr');
+      const nameTd = document.createElement('td');
+      nameTd.textContent = name;
+
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'remove-env';
+      removeBtn.textContent = 'Remove';
+      removeBtn.addEventListener('click', async () => {
+        clearError();
+        const resp = await fetch('/api/companies/remove', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name }),
+        });
+        const body = await resp.json();
+        if (!resp.ok) { showError(body.error); return; }
+        renderCompanies(body);
+      });
+      const actionTd = document.createElement('td');
+      actionTd.appendChild(removeBtn);
+
+      tr.appendChild(nameTd);
+      tr.appendChild(actionTd);
+      tbody.appendChild(tr);
+    });
+  }
+
+  document.getElementById('add-company-btn').addEventListener('click', async () => {
+    clearError();
+    const name = document.getElementById('new-company').value.trim();
+    if (!name) { showError('Company name is required.'); return; }
+    const resp = await fetch('/api/companies/add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    const body = await resp.json();
+    if (!resp.ok) { showError(body.error); return; }
+    document.getElementById('new-company').value = '';
+    renderCompanies(body);
+  });
+
+  renderCompanies({{ company_list | tojson }});
+</script>
+{% endblock %}

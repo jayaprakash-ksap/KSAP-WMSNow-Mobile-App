@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WMSNow Redwood Mobile - Admin Build</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+{% import "_icons.html" as icons %}
+  <div class="hazard-bar"></div>
+  <div class="login-shell">
+    <div class="login-art-side">
+      <svg viewBox="0 0 320 260" fill="none" aria-hidden="true">
+        <rect x="20" y="60" width="280" height="170" rx="6" fill="#1b2027" stroke="#333a43" stroke-width="2"/>
+        <path d="M20 110h280M20 160h280M110 60v170M200 60v170" stroke="#333a43" stroke-width="2"/>
+        <rect x="34" y="72" width="62" height="30" rx="3" fill="#ff6a13" opacity="0.85"/>
+        <rect x="124" y="72" width="62" height="30" rx="3" fill="#2dd4bf" opacity="0.85"/>
+        <rect x="214" y="72" width="62" height="30" rx="3" fill="#454d57"/>
+        <rect x="34" y="122" width="62" height="30" rx="3" fill="#454d57"/>
+        <rect x="124" y="122" width="62" height="30" rx="3" fill="#454d57"/>
+        <rect x="214" y="122" width="62" height="30" rx="3" fill="#ff6a13" opacity="0.85"/>
+        <rect x="34" y="172" width="62" height="30" rx="3" fill="#2dd4bf" opacity="0.85"/>
+        <rect x="124" y="172" width="62" height="30" rx="3" fill="#454d57"/>
+        <rect x="214" y="172" width="62" height="30" rx="3" fill="#454d57"/>
+        <circle cx="270" cy="215" r="14" fill="#10131a" stroke="#ff6a13" stroke-width="2"/>
+        <path d="M270 208v7l5 3" stroke="#ff6a13" stroke-width="2" stroke-linecap="round"/>
+        <path d="M40 245h240" stroke="#333a43" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      <div class="art-caption">Generate locked builds, distribute them by QR code, and keep every RF device on the floor accounted for - from one place.</div>
+    </div>
+    <div class="login-form-side">
+      <div class="login-page">
+        <div class="brand-block">
+          {{ icons.brand_mark() }}
+          <div class="brand-name">WMSNow <span class="accent">Admin</span></div>
+        </div>
+        <div class="card">
+          <h2>Admin Login</h2>
+          {% if error %}
+            <div class="error-banner">{{ error }}</div>
+          {% endif %}
+          <form method="post">
+            <label for="username">Username</label>
+            <input type="text" id="username" name="username" autofocus required>
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" required>
+            <div style="margin-top: 20px;">
+              <button type="submit" class="btn">Log In</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

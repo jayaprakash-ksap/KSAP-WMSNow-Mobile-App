@@ -1,0 +1,33 @@
+{# Shared icon set + brand mark (2026-09-28) - imported by base.html (for
+   the sidebar) and by any page template that also wants an icon inside its
+   own content block, e.g. home.html's dashboard cards. Jinja macros aren't
+   visible across an extends boundary, only across an explicit import, which
+   is why this lives in its own file rather than inside base.html itself. #}
+
+{% macro icon(name) %}
+{% if name == 'home' %}
+<svg viewBox="0 0 24 24" fill="none"><path d="M4 11.5 12 4l8 7.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 10v9h12v-9" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M10 19v-5h4v5" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+{% elif name == 'build' %}
+<svg viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="16" height="16" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M9 9h6v6H9z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 4v2M12 18v2M4 12h2M18 12h2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+{% elif name == 'company' %}
+<svg viewBox="0 0 24 24" fill="none"><path d="M4 21V6l8-3 8 3v15" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M4 21h16M9 10h1.5M9 14h1.5M13.5 10H15M13.5 14H15M10 21v-5h4v5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+{% elif name == 'instance' %}
+<svg viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="16" height="6" rx="1.5" stroke="currentColor" stroke-width="1.8"/><rect x="4" y="14" width="16" height="6" rx="1.5" stroke="currentColor" stroke-width="1.8"/><circle cx="7.5" cy="7" r="0.9" fill="currentColor"/><circle cx="7.5" cy="17" r="0.9" fill="currentColor"/></svg>
+{% elif name == 'history' %}
+<svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="1.8"/><path d="M12 8v4l3 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+{% elif name == 'logs' %}
+<svg viewBox="0 0 24 24" fill="none"><path d="M6 3h9l4 4v14H6z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 12h6M9 15.5h6M9 8.5h2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+{% elif name == 'images' %}
+<svg viewBox="0 0 24 24" fill="none"><rect x="3.5" y="5.5" width="17" height="13" rx="2" stroke="currentColor" stroke-width="1.8"/><circle cx="9" cy="10.5" r="1.6" stroke="currentColor" stroke-width="1.6"/><path d="M5 17l4.5-4.5 3 3L17 11l3 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+{% elif name == 'users' %}
+<svg viewBox="0 0 24 24" fill="none"><circle cx="9" cy="8" r="3" stroke="currentColor" stroke-width="1.8"/><path d="M3.5 20c0-3.3 2.5-6 5.5-6s5.5 2.7 5.5 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M16 4.5c1.7.4 3 2 3 3.9 0 1.9-1.3 3.5-3 3.9M18.5 14.3c1.9.6 3.5 2.7 3.5 5.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+{% elif name == 'distribution' %}
+<svg viewBox="0 0 24 24" fill="none"><rect x="3.5" y="3.5" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.7"/><rect x="14.5" y="3.5" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.7"/><rect x="3.5" y="14.5" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.7"/><path d="M14.5 17.5h6M17.5 14.5v6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+{% elif name == 'logout' %}
+<svg viewBox="0 0 24 24" fill="none"><path d="M9 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 8l4 4-4 4M9 12h9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+{% endif %}
+{% endmacro %}
+
+{% macro brand_mark() %}
+<svg viewBox="0 0 32 32" fill="none"><rect x="2" y="4" width="28" height="24" rx="3" fill="#23282f" stroke="#454d57" stroke-width="1"/><path d="M6 9h20M6 16h20M6 23h20" stroke="#454d57" stroke-width="1.4"/><rect x="6" y="10.5" width="4.5" height="4.5" rx="0.6" fill="#ff6a13"/><rect x="12.5" y="10.5" width="4.5" height="4.5" rx="0.6" fill="#2dd4bf"/><rect x="6" y="17.5" width="4.5" height="4.5" rx="0.6" fill="#2dd4bf"/><rect x="19" y="17.5" width="4.5" height="4.5" rx="0.6" fill="#ff6a13"/></svg>
+{% endmacro %}

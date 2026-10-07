@@ -1,4 +1,4 @@
-package com.example.japra_redwood_v3
+package com.example.wmsnow_redwood_v3
 
 import io.flutter.embedding.android.FlutterActivity
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Local receiver for Japra WMS Mobile's captured photos/signatures.
+"""Local receiver for WMSNow Redwood Mobile's captured photos/signatures.
 
 Run this on the same machine the project source lives on:
 
@@ -8,7 +8,7 @@ Run this on the same machine the project source lives on:
 It listens on 0.0.0.0:PORT and writes every accepted upload into
 `captured_images/` next to THIS script (i.e. <project root>/captured_images)
 - not a hardcoded absolute path. That means copying this exact file into a
-different `japra_redwood_v*` project folder later makes it write into that
+different `wmsnow_redwood_v*` project folder later makes it write into that
 folder's own captured_images automatically, no code changes needed.
 
 Change TOKEN below before relying on this beyond local testing - it's a
@@ -108,7 +108,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 def main() -> None:
     DEST_DIR.mkdir(parents=True, exist_ok=True)
-    if TOKEN == "change-me-japra-pod-token":
+    if TOKEN == "change-me-wmsnow-pod-token":
         print("WARNING: using the default TOKEN - edit this script before "
               "relying on it beyond local testing.", file=sys.stderr)
     with socketserver.ThreadingTCPServer(("0.0.0.0", PORT), Handler) as httpd:

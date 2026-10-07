@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WMSNow Redwood Mobile - Download</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="hazard-bar"></div>
+  <header class="topbar">
+    <div style="display:flex; align-items:center; gap:16px;">
+      <div class="brand">WMSNow Redwood Mobile</div>
+    </div>
+  </header>
+
+  <div class="page" style="max-width: 480px;">
+    {% if link is none %}
+    <div class="card">
+      <h2>Link not found</h2>
+      <p>This download link doesn't exist, or has been revoked. Ask your KSAP contact for a current one.</p>
+    </div>
+    {% elif record is none %}
+    <div class="card">
+      <h2>No build available</h2>
+      <p>This link is configured, but the build it points to is no longer available. Ask your KSAP contact to check it.</p>
+    </div>
+    {% else %}
+    <div class="card">
+      <h2>{{ link.customer }}{% if link.instance %} - {{ link.instance }}{% endif %}</h2>
+      <div class="hint" style="margin-bottom: 16px;">
+        This link always has the current approved build - just revisit it any time you need to
+        (re)install.
+      </div>
+      {% if record.apk_path %}
+      <a class="btn" style="display:block; text-align:center; margin-bottom: 12px;"
+         href="{{ url_for('distribution_link_download', token=link.token, which='apk') }}">
+        Download Android APK
+      </a>
+      {% endif %}
+      {% if record.windows_path %}
+      <a class="btn" style="display:block; text-align:center;"
+         href="{{ url_for('distribution_link_download', token=link.token, which='windows') }}">
+        Download Windows
+      </a>
+      {% endif %}
+      {% if not record.apk_path and not record.windows_path %}
+      <p>No downloadable file is attached to this build.</p>
+      {% endif %}
+    </div>
+    <div class="hint" style="text-align:center;">
+      After downloading the APK, your device may ask you to allow "install unknown apps" for
+      your browser - this is expected for an internal app not distributed through the Play
+      Store.
+    </div>
+    {% endif %}
+  </div>
+</body>
+</html>

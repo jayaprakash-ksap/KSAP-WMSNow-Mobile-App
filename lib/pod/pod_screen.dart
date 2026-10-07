@@ -60,16 +60,20 @@ class _PodScreenState extends State<PodScreen> {
   @override
   void initState() {
     super.initState();
+    // Only OPENS the dropdown (2026-09-26) - closing it used to be driven
+    // by this same listener's focus-loss branch on a 150ms delay, racing
+    // against whichever tap/drag caused that focus loss to also finish its
+    // own gesture in time. That race was lost two different ways: clicking
+    // a list item (a tap outside the TextField, so focus is lost the
+    // instant the mouse goes down) sometimes lost the race to its own
+    // onTap on desktop; dragging the scrollbar - a press-and-hold gesture
+    // that routinely runs past 150ms - always lost it, so the list closed
+    // mid-drag. Closing is now handled by _buildOrderPicker's TapRegion
+    // instead, which has no timing dependency at all.
     _orderFocusNode.addListener(() {
       if (_orderFocusNode.hasFocus) {
         setState(() => _showOrderDropdown = true);
         _ensureOrderLov();
-      } else {
-        // Delayed so a tap on a dropdown item (which also unfocuses) has a
-        // chance to register its onTap before the list disappears.
-        Future.delayed(const Duration(milliseconds: 150), () {
-          if (mounted) setState(() => _showOrderDropdown = false);
-        });
       }
     });
   }
@@ -172,7 +176,8 @@ class _PodScreenState extends State<PodScreen> {
     });
     final attempted = _checked.toSet();
     final results = await _pod.deliver(attempted);
-    final failed = results.entries.where((e) => !e.value).map((e) => e.key).toSet();
+    final failed =
+        results.entries.where((e) => !e.value).map((e) => e.key).toSet();
     if (failed.isEmpty) {
       await _persistSignature(_detail!.orderNbr);
     }
@@ -247,7 +252,8 @@ class _PodScreenState extends State<PodScreen> {
           failureReason = 'could not encode signature as PNG';
         } else {
           final docsDir = await getApplicationDocumentsDirectory();
-          final folder = Directory('${docsDir.path}/${AppConfig.camFolderName}');
+          final folder =
+              Directory('${docsDir.path}/${AppConfig.camFolderName}');
           if (!await folder.exists()) await folder.create(recursive: true);
           final safeOrder = orderNbr.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
           final ts = DateTime.now().millisecondsSinceEpoch;
@@ -299,15 +305,18 @@ class _PodScreenState extends State<PodScreen> {
             if (_errorText != null)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
-                child: Text(_errorText!, style: const TextStyle(color: Colors.red)),
+                child: Text(_errorText!,
+                    style: const TextStyle(color: Colors.red)),
               ),
             const SizedBox(height: 12),
-            if (detail != null) Expanded(child: _buildOrderDetail(detail))
+            if (detail != null)
+              Expanded(child: _buildOrderDetail(detail))
             else if (_loadingDetail)
               const Expanded(child: Center(child: CircularProgressIndicator()))
             else
               const Expanded(
-                  child: Center(child: Text('Select an order and tap Submit.'))),
+                  child:
+                      Center(child: Text('Select an order and tap Submit.'))),
           ],
         ),
       ),
@@ -315,77 +324,95 @@ class _PodScreenState extends State<PodScreen> {
   }
 
   Widget _buildOrderPicker() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        TextField(
-          controller: _orderController,
-          focusNode: _orderFocusNode,
-          decoration: InputDecoration(
-            labelText: 'Order Nbr',
-            border: const OutlineInputBorder(),
-            suffixIcon: _loadingLov
-                ? const Padding(
-                    padding: EdgeInsets.all(14),
-                    child: SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2)),
-                  )
-                : const Icon(Icons.search),
+    // Closes the dropdown only on a tap genuinely outside this whole region
+    // (field + list) - no timer, so a click-and-drag on the scrollbar or a
+    // click on a list item is never mistaken for "tapped away," however
+    // long the gesture takes.
+    return TapRegion(
+      onTapOutside: (_) {
+        if (_showOrderDropdown) setState(() => _showOrderDropdown = false);
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TextField(
+            controller: _orderController,
+            focusNode: _orderFocusNode,
+            decoration: InputDecoration(
+              labelText: 'Order Nbr',
+              border: const OutlineInputBorder(),
+              suffixIcon: _loadingLov
+                  ? const Padding(
+                      padding: EdgeInsets.all(14),
+                      child: SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2)),
+                    )
+                  : const Icon(Icons.search),
+            ),
+            onChanged: (text) => setState(() {
+              if (_selectedOrder != null && text != _selectedOrder!.orderNbr) {
+                _selectedOrder = null;
+              }
+            }),
           ),
-          onChanged: (text) => setState(() {
-            if (_selectedOrder != null && text != _selectedOrder!.toString()) {
-              _selectedOrder = null;
-            }
-          }),
-        ),
-        if (_showOrderDropdown)
-          Container(
-            constraints: const BoxConstraints(maxHeight: 220),
-            decoration: BoxDecoration(
-                border: Border.all(color: Theme.of(context).dividerColor)),
-            child: _loadingLov && _orderLov == null
-                ? const Padding(
-                    padding: EdgeInsets.all(16),
-                    child: Center(child: CircularProgressIndicator()))
-                : _filteredOrders.isEmpty
-                    ? const Padding(
-                        padding: EdgeInsets.all(16),
-                        child: Text('No matching orders'))
-                    : ListView.builder(
-                        shrinkWrap: true,
-                        itemCount: _filteredOrders.length,
-                        itemBuilder: (context, i) {
-                          final o = _filteredOrders[i];
-                          return ListTile(
-                            title: Text(o.orderNbr),
-                            subtitle: o.custName.isEmpty ? null : Text(o.custName),
-                            selected: _selectedOrder == o,
-                            onTap: () {
-                              setState(() {
-                                _selectedOrder = o;
-                                _orderController.text = o.toString();
-                                _showOrderDropdown = false;
-                              });
-                              _orderFocusNode.unfocus();
-                            },
-                          );
-                        },
-                      ),
+          if (_showOrderDropdown)
+            Container(
+              constraints: const BoxConstraints(maxHeight: 220),
+              decoration: BoxDecoration(
+                  border: Border.all(color: Theme.of(context).dividerColor)),
+              child: _loadingLov && _orderLov == null
+                  ? const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Center(child: CircularProgressIndicator()))
+                  : _filteredOrders.isEmpty
+                      ? const Padding(
+                          padding: EdgeInsets.all(16),
+                          child: Text('No matching orders'))
+                      : ListView.builder(
+                          shrinkWrap: true,
+                          itemCount: _filteredOrders.length,
+                          itemBuilder: (context, i) {
+                            final o = _filteredOrders[i];
+                            return ListTile(
+                              title: Text(o.orderNbr),
+                              subtitle:
+                                  o.custName.isEmpty ? null : Text(o.custName),
+                              selected: _selectedOrder == o,
+                              onTap: () {
+                                setState(() {
+                                  _selectedOrder = o;
+                                  // Just the order number (2026-09-26), not
+                                  // the "orderNbr — custName" display
+                                  // string toString() builds - that
+                                  // composite text can't round-trip through
+                                  // _filteredOrders' per-field .contains()
+                                  // check, so reopening the dropdown after
+                                  // a selection was showing "No matching
+                                  // orders" for the very order just picked.
+                                  _orderController.text = o.orderNbr;
+                                  _showOrderDropdown = false;
+                                });
+                                _orderFocusNode.unfocus();
+                              },
+                            );
+                          },
+                        ),
+            ),
+          const SizedBox(height: 8),
+          ElevatedButton(
+            onPressed:
+                _selectedOrder == null || _loadingDetail ? null : _submitOrder,
+            child: _loadingDetail
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Text('Submit'),
           ),
-        const SizedBox(height: 8),
-        ElevatedButton(
-          onPressed:
-              _selectedOrder == null || _loadingDetail ? null : _submitOrder,
-          child: _loadingDetail
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2))
-              : const Text('Submit'),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -400,9 +427,10 @@ class _PodScreenState extends State<PodScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('Order: ${detail.orderNbr}',
-                    style:
-                        const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                if (detail.custName.isNotEmpty) Text('Customer: ${detail.custName}'),
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold, fontSize: 16)),
+                if (detail.custName.isNotEmpty)
+                  Text('Customer: ${detail.custName}'),
               ],
             ),
           ),
@@ -424,19 +452,22 @@ class _PodScreenState extends State<PodScreen> {
                       value: _checked.contains(line.oblpnId),
                       onChanged: (v) => _toggleLine(line, v),
                       title: Text('OBLPN ${line.oblpnNbr}'),
-                      subtitle: Text('Item ${line.itemCode} • Qty ${line.currQty}'),
+                      subtitle:
+                          Text('Item ${line.itemCode} • Qty ${line.currQty}'),
                     );
                   },
                 ),
         ),
         const SizedBox(height: 4),
-        const Text('Customer Signature', style: TextStyle(fontWeight: FontWeight.bold)),
+        const Text('Customer Signature',
+            style: TextStyle(fontWeight: FontWeight.bold)),
         const SizedBox(height: 4),
         RepaintBoundary(
           key: _signatureBoundaryKey,
           child: Container(
             height: 160,
-            decoration: BoxDecoration(border: Border.all(color: Colors.black26)),
+            decoration:
+                BoxDecoration(border: Border.all(color: Colors.black26)),
             child: ClipRect(
               child: _SignaturePad(
                 points: _strokePoints,
@@ -448,8 +479,9 @@ class _PodScreenState extends State<PodScreen> {
         Align(
           alignment: Alignment.centerRight,
           child: TextButton(
-            onPressed:
-                _strokePoints.isEmpty ? null : () => setState(() => _strokePoints = []),
+            onPressed: _strokePoints.isEmpty
+                ? null
+                : () => setState(() => _strokePoints = []),
             child: const Text('Clear'),
           ),
         ),
@@ -462,7 +494,8 @@ class _PodScreenState extends State<PodScreen> {
               ? const SizedBox(
                   width: 20,
                   height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: Colors.white))
               : const Text('Deliver'),
         ),
       ],
@@ -498,8 +531,8 @@ class _SignaturePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    canvas.drawRect(
-        Rect.fromLTWH(0, 0, size.width, size.height), Paint()..color = Colors.white);
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height),
+        Paint()..color = Colors.white);
     final paint = Paint()
       ..color = Colors.black
       ..strokeWidth = 2.5

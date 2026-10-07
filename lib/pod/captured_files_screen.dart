@@ -62,8 +62,8 @@ class _CapturedFilesScreenState extends State<CapturedFilesScreen> {
       final files = entries.whereType<File>().toList();
       // Newest first - whatever was just captured is the one you're most
       // likely here to grab.
-      files.sort((a, b) =>
-          b.statSync().modified.compareTo(a.statSync().modified));
+      files.sort(
+          (a, b) => b.statSync().modified.compareTo(a.statSync().modified));
       if (mounted) setState(() => _files = files);
     } catch (e) {
       if (mounted) setState(() => _error = '$e');

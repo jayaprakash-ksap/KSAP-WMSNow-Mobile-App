@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% import "_icons.html" as icons %}
+{% block title %}Home{% endblock %}
+{% block page_title %}Home{% endblock %}
+{% block crumb %}<div class="crumb">Welcome back{% if session.company %}, {{ session.company }}{% endif %}</div>{% endblock %}
+
+{% block content %}
+<div class="dash-hero">
+  <div class="hero-text">
+    <h1>WMSNow Redwood - Admin</h1>
+    <p>Generate customer builds, manage who can reach the floor's RF devices, and keep an eye on
+      what every device is doing - all from here.</p>
+  </div>
+  <svg class="hero-art" viewBox="0 0 200 150" fill="none" aria-hidden="true">
+    <rect x="8" y="40" width="184" height="100" rx="4" fill="#1f242b" stroke="#2e343c" stroke-width="1.5"/>
+    <path d="M8 70h184M8 100h184M52 40v100M104 40v100M148 40v100" stroke="#2e343c" stroke-width="1.5"/>
+    <rect x="16" y="47" width="28" height="16" rx="2" fill="#ff6a13" opacity="0.85"/>
+    <rect x="60" y="47" width="28" height="16" rx="2" fill="#2dd4bf" opacity="0.85"/>
+    <rect x="60" y="77" width="28" height="16" rx="2" fill="#454d57"/>
+    <rect x="112" y="77" width="28" height="16" rx="2" fill="#ff6a13" opacity="0.85"/>
+    <rect x="156" y="47" width="28" height="16" rx="2" fill="#454d57"/>
+    <rect x="16" y="107" width="28" height="16" rx="2" fill="#2dd4bf" opacity="0.85"/>
+    <rect x="112" y="107" width="28" height="16" rx="2" fill="#454d57"/>
+    <rect x="156" y="107" width="28" height="16" rx="2" fill="#ff6a13" opacity="0.85"/>
+    <circle cx="170" cy="120" r="9" fill="#10131a" stroke="#454d57" stroke-width="1.5"/>
+    <path d="M170 116v4l3 2" stroke="#ff6a13" stroke-width="1.4" stroke-linecap="round"/>
+  </svg>
+</div>
+
+<div class="dash-grid">
+  {% if session.role == 'builder' %}
+  <a class="dash-card" href="{{ url_for('index') }}">
+    <div class="dash-icon">{{ icons.icon('build') }}</div>
+    <div class="dash-title">Generate Build</div>
+    <div class="dash-desc">Bake a new locked APK/Windows build for a company's chosen instance(s).</div>
+  </a>
+  {% endif %}
+  <a class="dash-card teal" href="{{ url_for('history') }}">
+    <div class="dash-icon">{{ icons.icon('history') }}</div>
+    <div class="dash-title">History</div>
+    <div class="dash-desc">Every past build, compare two side by side, and re-download artifacts.</div>
+  </a>
+  <a class="dash-card" href="{{ url_for('logs') }}">
+    <div class="dash-icon">{{ icons.icon('logs') }}</div>
+    <div class="dash-title">Logs</div>
+    <div class="dash-desc">Browse uploaded device session activity, filterable by instance and date.</div>
+  </a>
+  {% if not session.company %}
+  <a class="dash-card teal" href="{{ url_for('images') }}">
+    <div class="dash-icon">{{ icons.icon('images') }}</div>
+    <div class="dash-title">Images</div>
+    <div class="dash-desc">Captured POD signatures and delivery/Split-IBLPN photos.</div>
+  </a>
+  {% endif %}
+  <a class="dash-card" href="{{ url_for('distribution_links_page') }}">
+    <div class="dash-icon">{{ icons.icon('distribution') }}</div>
+    <div class="dash-title">Distribution Links</div>
+    <div class="dash-desc">The QR code/URL floor devices use to install - always the current build.</div>
+  </a>
+  {% if session.role == 'builder' and not session.company %}
+  <a class="dash-card teal" href="{{ url_for('companies_page') }}">
+    <div class="dash-icon">{{ icons.icon('company') }}</div>
+    <div class="dash-title">Companies</div>
+    <div class="dash-desc">The customer master list every build and user scope picks from.</div>
+  </a>
+  <a class="dash-card" href="{{ url_for('instances_page') }}">
+    <div class="dash-icon">{{ icons.icon('instance') }}</div>
+    <div class="dash-title">Instances</div>
+    <div class="dash-desc">Each company's WMS environment(s) - domain, instance, OAuth client.</div>
+  </a>
+  <a class="dash-card teal" href="{{ url_for('users_page') }}">
+    <div class="dash-icon">{{ icons.icon('users') }}</div>
+    <div class="dash-title">Users</div>
+    <div class="dash-desc">Accounts, roles, and which company (if any) each one is scoped to.</div>
+  </a>
+  {% endif %}
+</div>
+{% endblock %}

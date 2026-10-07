@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+{% block title %}Distribution Links{% endblock %}
+{% block page_title %}Distribution Links{% endblock %}
+{% block crumb %}<div class="crumb">The QR code/URL floor devices use to install</div>{% endblock %}
+
+{% block content %}
+    <div id="form-error" class="error-banner" style="display:none;"></div>
+
+    <div class="card">
+      <h2>Distribution Links</h2>
+      <div class="hint" style="margin-bottom: 8px;">
+        Each link stays at the same URL forever and always serves whichever build is currently
+        marked "active" for it. A new matching build normally auto-advances that automatically -
+        if one turns out to be broken, roll back to an earlier build without changing the link
+        anyone already has. Share the QR code with floor devices; the link itself needs no login.
+      </div>
+      <div class="table-wrap">
+        <table class="log-table" id="links-table">
+          <thead>
+            <tr>
+              <th>Company</th><th>Instance</th><th>Active Build</th><th>Mode</th>
+              <th>QR</th><th>Link</th>{% if is_unrestricted_builder %}<th></th>{% endif %}
+            </tr>
+          </thead>
+          <tbody id="links-tbody"></tbody>
+        </table>
+      </div>
+      {% if not links %}<div class="hint">No distribution links yet.</div>{% endif %}
+    </div>
+
+    {% if is_unrestricted_builder %}
+    <div class="card">
+      <h2>Create Link</h2>
+      <div class="field-grid">
+        <div class="field-half">
+          <label for="new-customer">Company</label>
+          <select id="new-customer">
+            <option value="">-- select a company --</option>
+            {% for c in company_list %}
+            <option value="{{ c }}">{{ c }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field-half">
+          <label for="new-instance">Instance (optional - blank = any build for this company)</label>
+          <input type="text" id="new-instance" placeholder="e.g. mycompany_test">
+        </div>
+      </div>
+      <div class="hint">Creates the link pointed at whichever build is newest right now for that company/instance - generate the build first if none exists yet.</div>
+      <button type="button" class="btn-add" id="create-link-btn" style="margin-top: 16px;">+ Create link</button>
+    </div>
+    {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  <script>
+    const isUnrestrictedBuilder = {{ is_unrestricted_builder | tojson }};
+    const dlBase = {{ dl_base | tojson }};
+    const errorBanner = document.getElementById('form-error');
+    const tbody = document.getElementById('links-tbody');
+
+    function showError(msg) { errorBanner.textContent = msg; errorBanner.style.display = 'block'; }
+    function clearError() { errorBanner.style.display = 'none'; }
+    function fmtTs(ts) { return (ts || '').replace('T', ' ').slice(0, 19); }
+
+    function renderLinks(links) {
+      tbody.innerHTML = '';
+      links.forEach((link) => {
+        const tr = document.createElement('tr');
+
+        const companyTd = document.createElement('td');
+        companyTd.textContent = link.customer;
+        const instanceTd = document.createElement('td');
+        instanceTd.textContent = link.instance || 'All';
+        const buildTd = document.createElement('td');
+        buildTd.className = 'mono';
+        buildTd.textContent = fmtTs(link.active_record_timestamp) || link.active_record_id;
+        const modeTd = document.createElement('td');
+        modeTd.textContent = link.auto_advance ? 'Auto-advance' : 'Pinned (rolled back)';
+
+        const qrTd = document.createElement('td');
+        const qrImg = document.createElement('img');
+        qrImg.src = '/distribution-links/qr/' + encodeURIComponent(link.token) + '.png';
+        qrImg.alt = 'QR code';
+        qrImg.style.cssText = 'width:72px; height:72px; background:#fff; padding:4px; border-radius:4px;';
+        qrTd.appendChild(qrImg);
+
+        const linkTd = document.createElement('td');
+        const urlText = dlBase + '/dl/' + link.token;
+        const urlInput = document.createElement('input');
+        urlInput.type = 'text';
+        urlInput.value = urlText;
+        urlInput.readOnly = true;
+        urlInput.style.cssText = 'width:220px; font-size:11px;';
+        urlInput.className = 'mono';
+        linkTd.appendChild(urlInput);
+
+        tr.appendChild(companyTd);
+        tr.appendChild(instanceTd);
+        tr.appendChild(buildTd);
+        tr.appendChild(modeTd);
+        tr.appendChild(qrTd);
+        tr.appendChild(linkTd);
+
+        if (isUnrestrictedBuilder) {
+          const actionTd = document.createElement('td');
+          actionTd.style.cssText = 'display:flex; flex-direction:column; gap:6px; min-width:140px;';
+
+          const rollbackSelect = document.createElement('select');
+          rollbackSelect.style.fontSize = '12px';
+          const placeholder = document.createElement('option');
+          placeholder.value = '';
+          placeholder.textContent = 'Roll back to...';
+          rollbackSelect.appendChild(placeholder);
+          fetch('/api/distribution-links/' + encodeURIComponent(link.token) + '/history')
+            .then((r) => r.json())
+            .then((records) => {
+              records.forEach((rec) => {
+                const opt = document.createElement('option');
+                opt.value = rec.id;
+                opt.textContent = fmtTs(rec.timestamp) + (rec.id === link.active_record_id ? ' (current)' : '');
+                rollbackSelect.appendChild(opt);
+              });
+            });
+          rollbackSelect.addEventListener('change', async () => {
+            if (!rollbackSelect.value) return;
+            clearError();
+            const resp = await fetch('/api/distribution-links/set-active', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ token: link.token, record_id: rollbackSelect.value }),
+            });
+            const body = await resp.json();
+            if (!resp.ok) { showError(body.error); return; }
+            load();
+          });
+          actionTd.appendChild(rollbackSelect);
+
+          if (!link.auto_advance) {
+            const resumeBtn = document.createElement('button');
+            resumeBtn.type = 'button';
+            resumeBtn.className = 'btn-add';
+            resumeBtn.textContent = 'Resume auto-advance';
+            resumeBtn.addEventListener('click', async () => {
+              clearError();
+              const resp = await fetch('/api/distribution-links/resume-auto', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: link.token }),
+              });
+              const body = await resp.json();
+              if (!resp.ok) { showError(body.error); return; }
+              load();
+            });
+            actionTd.appendChild(resumeBtn);
+          }
+
+          const revokeBtn = document.createElement('button');
+          revokeBtn.type = 'button';
+          revokeBtn.className = 'remove-env';
+          revokeBtn.textContent = 'Revoke';
+          revokeBtn.addEventListener('click', async () => {
+            if (!confirm('Revoke this link? Anyone who still has the URL/QR code will stop being able to download with it.')) return;
+            clearError();
+            const resp = await fetch('/api/distribution-links/revoke', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ token: link.token }),
+            });
+            const body = await resp.json();
+            if (!resp.ok) { showError(body.error); return; }
+            load();
+          });
+          actionTd.appendChild(revokeBtn);
+
+          tr.appendChild(actionTd);
+        }
+
+        tbody.appendChild(tr);
+      });
+    }
+
+    async function load() {
+      // Re-render from the server-provided initial list on first load; after
+      // any mutation we just reload the page's own data via a fresh fetch of
+      // this same page's links through the create/revoke/etc responses -
+      // simplest correct approach here is a full page reload, since several
+      // rows' history dropdowns are populated by their own separate fetches.
+      window.location.reload();
+    }
+
+    if (isUnrestrictedBuilder) {
+      document.getElementById('create-link-btn').addEventListener('click', async () => {
+        clearError();
+        const customer = document.getElementById('new-customer').value;
+        const instance = document.getElementById('new-instance').value.trim();
+        if (!customer) { showError('Pick a company.'); return; }
+        const resp = await fetch('/api/distribution-links/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ customer, instance }),
+        });
+        const body = await resp.json();
+        if (!resp.ok) { showError(body.error); return; }
+        window.location.reload();
+      });
+    }
+
+    renderLinks({{ links | tojson }});
+  </script>
+{% endblock %}

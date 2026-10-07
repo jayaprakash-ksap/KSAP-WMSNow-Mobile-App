@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+{% block title %}Users{% endblock %}
+{% block page_title %}Users{% endblock %}
+{% block crumb %}<div class="crumb">Accounts, roles and company scope</div>{% endblock %}
+
+{% block content %}
+<div id="form-error" class="error-banner" style="display:none;"></div>
+
+<div class="card">
+  <h2>Users</h2>
+  <div class="hint" style="margin-bottom: 8px;">
+    <strong>Builder</strong> can generate/rebuild APKs, download build artifacts, and manage
+    notification emails, in addition to everything a viewer can see.
+    <strong>Viewer</strong> can see History, Compare, and Logs, but cannot generate a build,
+    download a build artifact, or see an unmasked OAuth client secret.
+    <br><br>
+    <strong>Company</strong> restricts an account to exactly one customer's builds/history/
+    logs - leave it blank for "all companies" (unrestricted). Only an unrestricted builder can
+    reach this page at all, and this page always shows "All companies" even for a viewer, since
+    Images currently can't be filtered by company (see the note in image_lib.py) and is hidden
+    entirely from any scoped account.
+  </div>
+  <div class="table-wrap">
+    <table class="log-table" id="users-table">
+      <thead>
+        <tr><th>Username</th><th>Role</th><th>Company</th><th></th></tr>
+      </thead>
+      <tbody id="users-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Add User</h2>
+  <div class="field-grid">
+    <div class="field-half">
+      <label for="new-username">Username</label>
+      <input type="text" id="new-username" placeholder="e.g. jsmith">
+    </div>
+    <div class="field-half">
+      <label for="new-password">Password</label>
+      <input type="password" id="new-password" placeholder="At least set something non-trivial">
+    </div>
+    <div class="field-half">
+      <label for="new-role">Role</label>
+      <select id="new-role">
+        {% for r in roles %}
+        <option value="{{ r }}">{{ r }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field-half">
+      <label for="new-company">Company (optional - blank means unrestricted)</label>
+      <select id="new-company">
+        <option value="">-- all companies (unrestricted) --</option>
+        {% for c in company_list %}
+        <option value="{{ c }}">{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+  {% if not company_list %}
+  <div class="hint"><a href="{{ url_for('companies_page') }}">Add a company</a> first if you want to scope anyone.</div>
+  {% endif %}
+  <button type="button" class="btn-add" id="add-user-btn" style="margin-top: 16px;">+ Add user</button>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const currentUsername = {{ session.username | tojson }};
+  const errorBanner = document.getElementById('form-error');
+  const tbody = document.getElementById('users-tbody');
+  const roles = {{ roles | tojson }};
+  const companies = {{ company_list | tojson }};
+
+  function showError(msg) {
+    errorBanner.textContent = msg;
+    errorBanner.style.display = 'block';
+  }
+  function clearError() {
+    errorBanner.style.display = 'none';
+  }
+
+  function renderUsers(accountList) {
+    tbody.innerHTML = '';
+    accountList.forEach((u) => {
+      const tr = document.createElement('tr');
+      const isSelf = u.username === currentUsername;
+
+      const roleSelect = document.createElement('select');
+      roles.forEach((r) => {
+        const opt = document.createElement('option');
+        opt.value = r;
+        opt.textContent = r;
+        if (r === u.role) opt.selected = true;
+        roleSelect.appendChild(opt);
+      });
+      roleSelect.disabled = isSelf;
+      roleSelect.addEventListener('change', async () => {
+        clearError();
+        const newRole = roleSelect.value;
+        const resp = await fetch('/api/users/set-role', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: u.username, role: newRole }),
+        });
+        const body = await resp.json();
+        if (!resp.ok) {
+          showError(body.error);
+          roleSelect.value = u.role; // revert the dropdown, the change was rejected
+          return;
+        }
+        renderUsers(body);
+      });
+
+      const companySelect = document.createElement('select');
+      const allOpt = document.createElement('option');
+      allOpt.value = '';
+      allOpt.textContent = '-- all companies (unrestricted) --';
+      companySelect.appendChild(allOpt);
+      companies.forEach((c) => {
+        const opt = document.createElement('option');
+        opt.value = c;
+        opt.textContent = c;
+        companySelect.appendChild(opt);
+      });
+      companySelect.value = u.company || '';
+      companySelect.disabled = isSelf;
+      companySelect.title = isSelf ? "You can't scope your own account while logged in as it." : '';
+      companySelect.addEventListener('change', async () => {
+        clearError();
+        const newCompany = companySelect.value;
+        const resp = await fetch('/api/users/set-company', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: u.username, company: newCompany }),
+        });
+        const body = await resp.json();
+        if (!resp.ok) {
+          showError(body.error);
+          companySelect.value = u.company || ''; // revert, the change was rejected
+          return;
+        }
+        renderUsers(body);
+      });
+
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'remove-env';
+      removeBtn.textContent = 'Remove';
+      removeBtn.disabled = isSelf;
+      removeBtn.title = isSelf ? "You can't remove your own account while logged in as it." : '';
+      removeBtn.addEventListener('click', async () => {
+        clearError();
+        const resp = await fetch('/api/users/remove', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: u.username }),
+        });
+        const body = await resp.json();
+        if (!resp.ok) { showError(body.error); return; }
+        renderUsers(body);
+      });
+
+      const usernameTd = document.createElement('td');
+      usernameTd.textContent = u.username + (isSelf ? ' (you)' : '');
+      const roleTd = document.createElement('td');
+      roleTd.appendChild(roleSelect);
+      const companyTd = document.createElement('td');
+      companyTd.appendChild(companySelect);
+      const actionTd = document.createElement('td');
+      actionTd.appendChild(removeBtn);
+
+      tr.appendChild(usernameTd);
+      tr.appendChild(roleTd);
+      tr.appendChild(companyTd);
+      tr.appendChild(actionTd);
+      tbody.appendChild(tr);
+    });
+  }
+
+  document.getElementById('add-user-btn').addEventListener('click', async () => {
+    clearError();
+    const username = document.getElementById('new-username').value.trim();
+    const password = document.getElementById('new-password').value;
+    const role = document.getElementById('new-role').value;
+    const company = document.getElementById('new-company').value.trim();
+    if (!username || !password) { showError('Username and password are both required.'); return; }
+    const resp = await fetch('/api/users/add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password, role, company }),
+    });
+    const body = await resp.json();
+    if (!resp.ok) { showError(body.error); return; }
+    document.getElementById('new-username').value = '';
+    document.getElementById('new-password').value = '';
+    document.getElementById('new-company').value = '';
+    renderUsers(body);
+  });
+
+  renderUsers({{ account_list | tojson }});
+</script>
+{% endblock %}

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}WMSNow Redwood Mobile{% endblock %} - Admin Build</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+{% import "_icons.html" as icons %}
+  <div class="hazard-bar"></div>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand-block">
+        {{ icons.brand_mark() }}
+        <div class="brand-name">WMSNow <span class="accent">Admin</span></div>
+      </div>
+      <nav>
+        <a class="nav-item {{ 'active' if active == 'home' }}" href="{{ url_for('home') }}">{{ icons.icon('home') }}Home</a>
+        {% if session.role == 'builder' %}
+        <a class="nav-item {{ 'active' if active == 'build' }}" href="{{ url_for('index') }}">{{ icons.icon('build') }}Generate Build</a>
+        {% endif %}
+        <a class="nav-item {{ 'active' if active == 'history' }}" href="{{ url_for('history') }}">{{ icons.icon('history') }}History</a>
+        <a class="nav-item {{ 'active' if active == 'logs' }}" href="{{ url_for('logs') }}">{{ icons.icon('logs') }}Logs</a>
+        {% if not session.company %}
+        <a class="nav-item {{ 'active' if active == 'images' }}" href="{{ url_for('images') }}">{{ icons.icon('images') }}Images</a>
+        {% endif %}
+        <a class="nav-item {{ 'active' if active == 'distribution' }}" href="{{ url_for('distribution_links_page') }}">{{ icons.icon('distribution') }}Distribution Links</a>
+        {% if session.role == 'builder' and not session.company %}
+        <div class="nav-divider"></div>
+        <a class="nav-item {{ 'active' if active == 'companies' }}" href="{{ url_for('companies_page') }}">{{ icons.icon('company') }}Companies</a>
+        <a class="nav-item {{ 'active' if active == 'instances' }}" href="{{ url_for('instances_page') }}">{{ icons.icon('instance') }}Instances</a>
+        <a class="nav-item {{ 'active' if active == 'users' }}" href="{{ url_for('users_page') }}">{{ icons.icon('users') }}Users</a>
+        {% endif %}
+      </nav>
+      <div class="sidebar-footer">
+        <div class="who">
+          <strong>{{ session.username }}</strong><br>
+          {{ session.role | capitalize }}
+          {% if session.company %}<br><span class="scope-pill">{{ session.company }}</span>{% else %}<br><span class="scope-pill">All companies</span>{% endif %}
+        </div>
+        <a class="nav-item" href="{{ url_for('logout') }}">{{ icons.icon('logout') }}Log out</a>
+      </div>
+    </aside>
+    <div class="main-pane">
+      {% block topline %}
+      <div class="topline">
+        <div>
+          <h1>{% block page_title %}{% endblock %}</h1>
+          {% block crumb %}{% endblock %}
+        </div>
+      </div>
+      {% endblock %}
+      <div class="page">
+        {% block content %}{% endblock %}
+      </div>
+    </div>
+  </div>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

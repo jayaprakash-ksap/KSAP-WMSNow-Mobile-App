@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}{{ filename }}{% endblock %}
+{% block page_title %}{{ filename }}{% endblock %}
+{% block crumb %}<div class="crumb"><a href="{{ url_for('logs') }}">&larr; Back to Logs</a></div>{% endblock %}
+
+{% block extra_head %}
+  <style>
+    table.log-table { width: 100%; border-collapse: collapse; font-family: "Consolas", "Courier New", monospace; font-size: 12.5px; table-layout: fixed; }
+    table.log-table th { text-align: left; padding: 8px 10px; color: var(--steel-400); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid var(--steel-700); }
+    table.log-table td { padding: 7px 10px; vertical-align: top; }
+    /* Odd/even STRIPED BY LOG ENTRY, not by <tr> (2026-08-27) - each entry
+       is two <tr>s (summary + hidden expand row) sharing one color via an
+       explicit .odd/.even class, since CSS nth-child would misalign once
+       some entries are expanded and others aren't. */
+    table.log-table tbody tr.odd { background: var(--steel-800); }
+    table.log-table tbody tr.even { background: #171b20; }
+    /* BUG FIX 2026-08-27 - live-confirmed: with table-layout:fixed, a
+       nowrap cell wider than its column doesn't wrap or push the table
+       wider, it just visually spills into the next column (looked like
+       Timestamp and Category text overlapping). overflow:hidden clips
+       instead of overlapping if content ever exceeds these widths, but
+       the widths themselves are sized generously enough that neither
+       should actually happen (longest timestamp ~26 chars, longest
+       category used in this app is LGFAPI_POST_JSON at 16 chars). */
+    table.log-table .ts { width: 220px; white-space: nowrap; overflow: hidden; color: var(--steel-200); }
+    table.log-table .cat { width: 150px; white-space: nowrap; overflow: hidden; font-weight: 700; color: var(--safety-orange); }
+    table.log-table .summary-row { cursor: pointer; }
+    table.log-table .summary-row:hover td { filter: brightness(1.15); }
+    table.log-table .preview {
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      color: var(--steel-200); max-width: 1px; /* forces ellipsis with table-layout:fixed */
+    }
+    table.log-table .toggle {
+      width: 28px; text-align: center; color: var(--safety-orange); font-weight: 700;
+      user-select: none;
+    }
+    table.log-table .details-row td { padding-top: 0; }
+    table.log-table .details { white-space: pre-wrap; word-break: break-word; color: var(--text-light); }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <div style="max-width: 1100px;">
+    <div class="card">
+      <h2>{{ filename }}</h2>
+      <div style="margin-bottom: 10px;">
+        <a class="toolbar-link" onclick="setAll(true)">Expand all</a>
+        &nbsp;&middot;&nbsp;
+        <a class="toolbar-link" onclick="setAll(false)">Collapse all</a>
+      </div>
+      <div style="overflow-x:auto;">
+        <table class="log-table" id="log-table">
+          <thead>
+            <tr>
+              <th style="width:28px;"></th>
+              <th style="width:220px;">Timestamp</th>
+              <th style="width:150px;">Category</th>
+              <th>Details</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+            {% set stripe = 'odd' if loop.index is odd else 'even' %}
+            {% set is_json = row.details is mapping or (row.details is sequence and row.details is not string) %}
+            <tr class="summary-row {{ stripe }}" onclick="toggleRow({{ loop.index0 }})">
+              <td class="toggle" id="toggle-{{ loop.index0 }}">+</td>
+              <td class="ts">{{ row.timestamp }}</td>
+              <td class="cat">{{ row.category }}</td>
+              <td class="preview">{% if is_json %}{{ row.details | tojson }}{% else %}{{ row.details }}{% endif %}</td>
+            </tr>
+            <tr class="details-row {{ stripe }}" id="details-{{ loop.index0 }}" style="display:none;">
+              <td></td>
+              <td colspan="3" class="details">{% if is_json %}{{ row.details | tojson(indent=2) }}{% else %}{{ row.details }}{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if not rows %}
+      <div class="hint" style="margin-top:10px;">This log file is empty.</div>
+      {% endif %}
+    </div>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script>
+    function toggleRow(i) {
+      const detailsRow = document.getElementById('details-' + i);
+      const toggle = document.getElementById('toggle-' + i);
+      const expanded = detailsRow.style.display !== 'none';
+      detailsRow.style.display = expanded ? 'none' : 'table-row';
+      toggle.textContent = expanded ? '+' : '−';
+    }
+    function setAll(expand) {
+      document.querySelectorAll('.details-row').forEach((row) => {
+        row.style.display = expand ? 'table-row' : 'none';
+      });
+      document.querySelectorAll('.toggle').forEach((t) => { t.textContent = expand ? '−' : '+'; });
+    }
+  </script>
+{% endblock %}

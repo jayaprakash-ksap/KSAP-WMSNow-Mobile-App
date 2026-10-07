@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}Compare Builds{% endblock %}
+{% block page_title %}Comparing Two Builds{% endblock %}
+{% block crumb %}<div class="crumb"><a href="{{ url_for('history') }}">&larr; Back to History</a></div>{% endblock %}
+
+{% block extra_head %}
+  <style>
+    table.compare { width: 100%; border-collapse: collapse; }
+    table.compare th, table.compare td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--steel-700); vertical-align: top; }
+    table.compare th { color: var(--steel-400); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .diff-cell { background: rgba(255, 106, 19, 0.12); border-left: 3px solid var(--safety-orange); }
+    .missing { color: var(--steel-400); font-style: italic; }
+    .yes { color: var(--ok-green); font-weight: 700; }
+    .no { color: var(--steel-400); }
+    .code-file { border: 1px solid var(--steel-700); border-radius: 6px; margin-bottom: 10px; overflow: hidden; }
+    .code-file summary { cursor: pointer; padding: 8px 12px; background: var(--steel-800); font-family: monospace; font-size: 13px; list-style: none; display: flex; align-items: center; gap: 10px; }
+    .code-file summary::-webkit-details-marker { display: none; }
+    .code-status { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; padding: 2px 8px; border-radius: 4px; }
+    .code-status.added { background: rgba(63, 178, 127, 0.18); color: var(--ok-green); }
+    .code-status.removed { background: rgba(229, 72, 77, 0.18); color: var(--error-red); }
+    .code-status.modified { background: rgba(255, 106, 19, 0.18); color: var(--safety-orange); }
+    .code-file pre { margin: 0; padding: 10px 12px; overflow-x: auto; font-size: 12.5px; line-height: 1.5; background: var(--steel-900); }
+    .diff-add { color: var(--ok-green); }
+    .diff-del { color: var(--error-red); }
+    .diff-hunk { color: var(--safety-orange); font-weight: 700; }
+    .diff-file { color: var(--steel-400); }
+    .diff-ctx { color: var(--steel-200); }
+  </style>
+{% endblock %}
+
+{% block content %}
+    <div class="card">
+      <table class="compare">
+        <tr>
+          <th style="width:22%;"></th>
+          <th style="width:39%;">Build A</th>
+          <th style="width:39%;">Build B</th>
+        </tr>
+        <tr>
+          <td>Customer</td>
+          <td>{{ a.customer }}</td>
+          <td>{{ b.customer }}</td>
+        </tr>
+        <tr>
+          <td>Built on</td>
+          <td>{{ a.timestamp.replace('T', ' ') }}</td>
+          <td>{{ b.timestamp.replace('T', ' ') }}</td>
+        </tr>
+        <tr>
+          <td>Platforms</td>
+          <td>{{ 'Android' if a.build_android else '' }} {{ '+ ' if a.build_android and a.build_windows else '' }}{{ 'Windows' if a.build_windows else '' }}</td>
+          <td>{{ 'Android' if b.build_android else '' }} {{ '+ ' if b.build_android and b.build_windows else '' }}{{ 'Windows' if b.build_windows else '' }}</td>
+        </tr>
+        <tr class="{{ 'diff-cell' if a.expiry_date != b.expiry_date else '' }}">
+          <td>License Expiry</td>
+          <td>{{ a.expiry_date or 'not set' }}</td>
+          <td>{{ b.expiry_date or 'not set' }}</td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Environment(s)</h2>
+      <table class="compare">
+        <tr>
+          <th>Environment</th>
+          <th>Build A</th>
+          <th>Build B</th>
+        </tr>
+        {% for row in env_rows %}
+        <tr>
+          <td>{{ row.name }}</td>
+          <td>
+            {% if not row.in_a %}<span class="missing">not present</span>{% else %}
+            <div class="{{ 'diff-cell' if row.domain_differs else '' }}">Domain: {{ row.domain_a }}</div>
+            <div class="{{ 'diff-cell' if row.instance_differs else '' }}">Instance: {{ row.instance_a }}</div>
+            <div class="{{ 'diff-cell' if row.client_id_differs else '' }}">Client ID: {{ row.client_id_a }}</div>
+            <div class="{{ 'diff-cell' if row.secret_differs else '' }}">Client Secret: {% if row.in_b %}{{ 'different' if row.secret_differs else 'same' }}{% else %}-{% endif %}</div>
+            {% endif %}
+          </td>
+          <td>
+            {% if not row.in_b %}<span class="missing">not present</span>{% else %}
+            <div class="{{ 'diff-cell' if row.domain_differs else '' }}">Domain: {{ row.domain_b }}</div>
+            <div class="{{ 'diff-cell' if row.instance_differs else '' }}">Instance: {{ row.instance_b }}</div>
+            <div class="{{ 'diff-cell' if row.client_id_differs else '' }}">Client ID: {{ row.client_id_b }}</div>
+            <div class="{{ 'diff-cell' if row.secret_differs else '' }}">Client Secret: {% if row.in_a %}{{ 'different' if row.secret_differs else 'same' }}{% else %}-{% endif %}</div>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Customizations</h2>
+      <table class="compare">
+        <tr>
+          <th>Customization</th>
+          <th>Build A</th>
+          <th>Build B</th>
+        </tr>
+        {% for row in feature_rows %}
+        <tr class="{{ 'diff-cell' if row.differs else '' }}">
+          <td>{{ row.title }}</td>
+          <td class="{{ 'yes' if row.in_a else 'no' }}">{{ 'On' if row.in_a else 'Off' }}</td>
+          <td class="{{ 'yes' if row.in_b else 'no' }}">{{ 'On' if row.in_b else 'Off' }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Code Changes</h2>
+      {% if not code_diff.available %}
+      <div class="hint">No code snapshot available for one or both of these builds
+        (they were built before code comparison was added). Rebuild either one to
+        get a snapshot going forward.</div>
+      {% elif not code_diff.files %}
+      <div class="hint">No differences in lib/ between these two builds.</div>
+      {% else %}
+      <div class="hint" style="margin-bottom:10px;">
+        {{ code_diff.files|length }} file(s) changed. Click a file to expand it.
+      </div>
+      {% for f in code_diff.files %}
+      <details class="code-file">
+        <summary>
+          <span class="code-status {{ f.status }}">{{ f.status }}</span>
+          <span>lib/{{ f.path }}</span>
+        </summary>
+        <pre>{{ f.diff_html | safe }}</pre>
+      </details>
+      {% endfor %}
+      {% endif %}
+    </div>
+{% endblock %}

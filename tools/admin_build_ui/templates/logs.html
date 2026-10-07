@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Activity Logs{% endblock %}
+{% block page_title %}Activity Logs{% endblock %}
+{% block crumb %}<div class="crumb">Device session activity, filterable by instance/date</div>{% endblock %}
+
+{% block content %}
+    <div class="card">
+      <h2>Find Session Logs</h2>
+      <label for="customer-select">Customer (optional)</label>
+      <select id="customer-select">
+        <option value="">-- all customers --</option>
+        {% for c in customers %}
+        <option value="{{ c }}">{{ c }}</option>
+        {% endfor %}
+      </select>
+
+      <label for="instance-select">Instance (optional)</label>
+      <select id="instance-select">
+        <option value="">-- all instances --</option>
+      </select>
+
+      <label for="date-input">Date (optional)</label>
+      <input type="date" id="date-input">
+
+      <div style="margin-top:16px;">
+        <button class="btn" id="search-btn" type="button">Search</button>
+      </div>
+    </div>
+
+    <div class="card" id="results-card" style="display:none;">
+      <h2>Sessions</h2>
+      <div style="overflow-x:auto;">
+        <table style="width:100%; border-collapse: collapse;">
+          <thead>
+            <tr style="text-align:left; color: var(--steel-400); font-size: 12.5px; text-transform: uppercase;">
+              <th style="padding:8px 6px;">Started</th>
+              <th style="padding:8px 6px;">Instance</th>
+              <th style="padding:8px 6px;">Username</th>
+              <th style="padding:8px 6px;">Size</th>
+              <th style="padding:8px 6px;"></th>
+            </tr>
+          </thead>
+          <tbody id="results-body"></tbody>
+        </table>
+      </div>
+      <div class="hint" id="no-results" style="display:none; margin-top:10px;">No sessions match those filters.</div>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+  <script>
+    const customerSelect = document.getElementById('customer-select');
+    const instanceSelect = document.getElementById('instance-select');
+    const dateInput = document.getElementById('date-input');
+    const resultsCard = document.getElementById('results-card');
+    const resultsBody = document.getElementById('results-body');
+    const noResults = document.getElementById('no-results');
+
+    async function refreshInstances() {
+      const customer = customerSelect.value;
+      const resp = await fetch('/api/instances' + (customer ? '?customer=' + encodeURIComponent(customer) : ''));
+      const instances = await resp.json();
+      instanceSelect.innerHTML = '<option value="">-- all instances --</option>' +
+        instances.map(i => `<option value="${i}">${i}</option>`).join('');
+    }
+    customerSelect.addEventListener('change', refreshInstances);
+    refreshInstances();
+
+    function formatBytes(n) {
+      if (n < 1024) return n + ' B';
+      if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+      return (n / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    async function search() {
+      const params = new URLSearchParams();
+      if (customerSelect.value) params.set('customer', customerSelect.value);
+      if (instanceSelect.value) params.set('instance', instanceSelect.value);
+      if (dateInput.value) params.set('date', dateInput.value);
+      const resp = await fetch('/api/log-files?' + params.toString());
+      const files = await resp.json();
+      resultsBody.innerHTML = '';
+      files.forEach((f) => {
+        const tr = document.createElement('tr');
+        tr.style.borderTop = '1px solid var(--steel-700)';
+        tr.innerHTML = `
+          <td style="padding:10px 6px; white-space:nowrap;">${f.timestamp.replace('T', ' ')}</td>
+          <td style="padding:10px 6px;">${f.instance}</td>
+          <td style="padding:10px 6px;">${f.username}</td>
+          <td style="padding:10px 6px;">${formatBytes(f.size_bytes)}</td>
+          <td style="padding:10px 6px;"><a class="btn-add" style="text-decoration:none; display:inline-block;" href="/logs/${encodeURIComponent(f.filename)}">Open</a></td>
+        `;
+        resultsBody.appendChild(tr);
+      });
+      noResults.style.display = files.length ? 'none' : 'block';
+      resultsCard.style.display = 'block';
+    }
+    document.getElementById('search-btn').addEventListener('click', search);
+    search(); // load unfiltered on first visit
+  </script>
+{% endblock %}

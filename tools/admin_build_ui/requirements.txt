@@ -1,0 +1,4 @@
+flask>=3.0
+# Distribution Links' QR codes (tools/admin_build_ui/distribution_links.py) -
+# the [pil] extra renders to PNG, which is embedded directly in the page.
+qrcode[pil]>=7.4

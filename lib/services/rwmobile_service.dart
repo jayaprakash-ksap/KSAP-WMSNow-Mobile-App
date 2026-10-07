@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../config/app_config.dart';
 import 'auth_service.dart';
+import 'log_service.dart';
 
 /// All confirmed request shapes for the Redwood Mobile API live here.
 ///
@@ -18,7 +19,7 @@ import 'auth_service.dart';
 /// - reverted the same day. It was later (2026-07-09) omitted specifically
 /// from keyboard_input calls, which worked for simple screens (menu
 /// selection, facility/company code) but a multi-field transactional screen
-/// ("MARS Receive SKUs - FG") could not get past a recurring session
+/// could not get past a recurring session
 /// conflict without it - adding clientid back to keyboard_input fixed that
 /// and stayed clean through a full multi-step transaction. One consistent
 /// shape (always include clientid) is used now rather than special-casing
@@ -30,7 +31,7 @@ import 'auth_service.dart';
 /// extensive live testing on 2026-07-09 (independently and by the developer
 /// in Postman) repeatedly showed the frozen model producing "this user
 /// session has expired" once the live session moved onto a different
-/// htmlrfid than the one pinned at login. See [[project_japra_redwood]] (dev
+/// htmlrfid than the one pinned at login. See [[project_wmsnow_redwood]] (dev
 /// memory) for the full history if this area needs revisiting again.
 ///
 /// One request/response pair, kept for the on-device debug history.
@@ -132,6 +133,12 @@ class RwmobileService {
     lastResponse = data;
     history.add(RwExchange(payload, data, DateTime.now(), tokenUsed, elapsed));
     if (history.length > _maxHistory) history.removeAt(0);
+    LogService.log('RF', {
+      'request': payload,
+      'response': data,
+      'status': res.statusCode,
+      'elapsed_ms': elapsed.inMilliseconds,
+    });
     return data;
   }
 
@@ -144,16 +151,16 @@ class RwmobileService {
   /// - confirmed against the user's functional spec (matches the flow
   /// diagram's own "Send keyboard_input" label).
   ///
-  /// `env_name` is the actual instance name (e.g. "flow_test"), confirmed
-  /// live on 2026-07-09 from the developer's own Postman session for BOTH
+  /// `env_name` is the actual instance name, confirmed
+  /// live on 2026-07-09 from the customer's own Postman session for BOTH
   /// the facility code and the company code submissions - both used
-  /// `env_name: "flow_test"` with the value in `keyboard_input`, not a
-  /// dedicated field.
+  /// `env_name` with the real instance name as the value in `keyboard_input`,
+  /// not a dedicated field.
   ///
   /// `clientid` IS included here (added 2026-07-09) - live-tested on a
-  /// multi-field transactional screen ("MARS Receive SKUs - FG"): the same
+  /// multi-field transactional screen: the same
   /// keyboard_input call WITHOUT clientid could not get past a recurring
-  /// session conflict, but WITH clientid (matching the developer's own
+  /// session conflict, but WITH clientid (matching the customer's own
   /// working Postman capture) it went through cleanly and stayed clean for
   /// the rest of a full multi-step transaction (Dock -> Shipment -> LPN ->
   /// SKU -> Qty -> Batch -> Expiry -> End LPN). Simple screens (menu
@@ -185,8 +192,7 @@ class RwmobileService {
   /// "Required Field" info dialog - that value must be explicitly
   /// (re-)submitted via sendInput() before TAB will move past it, even
   /// though the field visually already shows a value.
-  Future<Map<String, dynamic>> sendTab(int clientid, String htmlrfid) =>
-      _post({
+  Future<Map<String, dynamic>> sendTab(int clientid, String htmlrfid) => _post({
         'clientid': '$clientid', // STRING
         'htmlrfid': htmlrfid,
         'env_name': AppConfig.instance,
@@ -226,16 +232,29 @@ class RwmobileService {
   /// enough across facility/company to safely key a lookup on.
   Future<Map<String, dynamic>?> findEntity(
       String entity, Map<String, String> query) async {
-    final qs =
-        query.entries.map((e) => '${e.key}=${Uri.encodeComponent(e.value)}').join('&');
+    final qs = query.entries
+        .map((e) => '${e.key}=${Uri.encodeComponent(e.value)}')
+        .join('&');
     final url = '${AppConfig.lgfapiBase}/entity/$entity?$qs';
+    final started = DateTime.now();
     final res = await _client.get(
       Uri.parse(url),
       headers: {'Authorization': 'Bearer ${auth.session!.accessToken}'},
     );
-    if (res.statusCode != 200) return null;
+    final elapsedMs = DateTime.now().difference(started).inMilliseconds;
+    if (res.statusCode != 200) {
+      LogService.log('LGFAPI_GET',
+          {'url': url, 'status': res.statusCode, 'elapsed_ms': elapsedMs});
+      return null;
+    }
     final data = jsonDecode(res.body) as Map<String, dynamic>;
     final count = (data['result_count'] ?? 0) as int;
+    LogService.log('LGFAPI_GET', {
+      'url': url,
+      'status': res.statusCode,
+      'elapsed_ms': elapsedMs,
+      'result_count': count,
+    });
     if (count == 0) return null;
     return (data['results'] as List).first as Map<String, dynamic>;
   }
@@ -248,6 +267,7 @@ class RwmobileService {
   Future<bool> patchField(
       String entity, int id, String fieldKey, String value) async {
     final url = '${AppConfig.lgfapiBase}/entity/$entity/$id/';
+    final started = DateTime.now();
     final res = await _client.patch(
       Uri.parse(url),
       headers: {
@@ -258,7 +278,16 @@ class RwmobileService {
         'fields': {fieldKey: value}
       }),
     );
-    return res.statusCode >= 200 && res.statusCode < 300;
+    final ok = res.statusCode >= 200 && res.statusCode < 300;
+    LogService.log('LGFAPI_PATCH', {
+      'url': url,
+      'field': fieldKey,
+      'value': value,
+      'status': res.statusCode,
+      'elapsed_ms': DateTime.now().difference(started).inMilliseconds,
+      'ok': ok,
+    });
+    return ok;
   }
 
   // ---- lgfapi: generic list/action calls (POD, 2026-07-23) ----
@@ -280,21 +309,44 @@ class RwmobileService {
         .map((e) => '${e.key}=${Uri.encodeComponent(e.value)}')
         .join('&');
     final url = '${AppConfig.lgfapiBase}$path${qs.isEmpty ? '' : '?$qs'}';
+    final started = DateTime.now();
     final res = await _client.get(
       Uri.parse(url),
       headers: {'Authorization': 'Bearer ${auth.session!.accessToken}'},
     );
+    final elapsedMs = DateTime.now().difference(started).inMilliseconds;
     try {
       final decoded = jsonDecode(res.body);
-      final data = decoded is Map<String, dynamic>
-          ? decoded
-          : {'results': decoded};
+      final data =
+          decoded is Map<String, dynamic> ? decoded : {'results': decoded};
+      LogService.log('LGFAPI_GET', {
+        'url': url,
+        'status': res.statusCode,
+        'elapsed_ms': elapsedMs,
+        'response': data,
+      });
       if (res.statusCode < 200 || res.statusCode >= 300) {
         return {'_status': res.statusCode, ...data};
       }
       return data;
     } catch (_) {
-      return {'_error': 'Non-JSON response', '_status': res.statusCode};
+      // BUG FIX 2026-08-22 - live-confirmed a 204 No Content response (a
+      // legitimate SUCCESS with an intentionally empty body) was landing
+      // here via jsonDecode('') throwing, and got unconditionally treated
+      // as an `_error` - Full Pallet Task's pack_full_lpn call actually
+      // succeeded server-side (LPN packed) but the app showed "Scan
+      // failed". A 2xx status here means the call genuinely succeeded with
+      // no body to report - return an empty success map, not an error one.
+      final ok = res.statusCode >= 200 && res.statusCode < 300;
+      LogService.log('LGFAPI_GET', {
+        'url': url,
+        'status': res.statusCode,
+        'elapsed_ms': elapsedMs,
+        if (!ok) 'error': 'Non-JSON response',
+      });
+      return ok
+          ? {}
+          : {'_error': 'Non-JSON response', '_status': res.statusCode};
     }
   }
 
@@ -303,6 +355,7 @@ class RwmobileService {
   /// response was 2xx.
   Future<bool> lgfapiPost(String path, [Map<String, dynamic>? body]) async {
     final url = '${AppConfig.lgfapiBase}$path';
+    final started = DateTime.now();
     final res = await _client.post(
       Uri.parse(url),
       headers: {
@@ -311,6 +364,95 @@ class RwmobileService {
       },
       body: body == null ? null : jsonEncode(body),
     );
-    return res.statusCode >= 200 && res.statusCode < 300;
+    final ok = res.statusCode >= 200 && res.statusCode < 300;
+    LogService.log('LGFAPI_POST', {
+      'url': url,
+      'body': body,
+      'status': res.statusCode,
+      'elapsed_ms': DateTime.now().difference(started).inMilliseconds,
+      'ok': ok,
+    });
+    return ok;
+  }
+
+  /// POST `$lgfapiBase$path` with a JSON [body], returning the decoded
+  /// response body - unlike [lgfapiPost] above (which only reports 2xx/not,
+  /// fine for action endpoints with nothing worth reading back), this is
+  /// for endpoints whose response is actually needed (e.g.
+  /// print/label/shipping's own success/message fields, Mix Area Task,
+  /// 2026-08-21). Same non-throwing robustness as lgfapiGet.
+  Future<Map<String, dynamic>> lgfapiPostJson(
+      String path, Map<String, dynamic> body) async {
+    final url = '${AppConfig.lgfapiBase}$path';
+    final started = DateTime.now();
+    final res = await _client.post(
+      Uri.parse(url),
+      headers: {
+        'Authorization': 'Bearer ${auth.session!.accessToken}',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode(body),
+    );
+    final elapsedMs = DateTime.now().difference(started).inMilliseconds;
+    try {
+      final decoded = jsonDecode(res.body);
+      final data =
+          decoded is Map<String, dynamic> ? decoded : {'results': decoded};
+      LogService.log('LGFAPI_POST_JSON', {
+        'url': url,
+        'body': body,
+        'status': res.statusCode,
+        'elapsed_ms': elapsedMs,
+        'response': data,
+      });
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        return {'_status': res.statusCode, ...data};
+      }
+      return data;
+    } catch (_) {
+      // BUG FIX 2026-08-22 - same fix as lgfapiGet's catch block above:
+      // a 2xx status with an empty/unparseable body (live-confirmed via a
+      // real 204 No Content from pack_full_lpn) is a genuine success, not
+      // an error - only report `_error` for a genuinely non-2xx status.
+      final ok = res.statusCode >= 200 && res.statusCode < 300;
+      LogService.log('LGFAPI_POST_JSON', {
+        'url': url,
+        'body': body,
+        'status': res.statusCode,
+        'elapsed_ms': elapsedMs,
+        if (!ok) 'error': 'Non-JSON response',
+      });
+      return ok
+          ? {}
+          : {'_error': 'Non-JSON response', '_status': res.statusCode};
+    }
+  }
+
+  /// POST `$apiBase$path` as form-urlencoded (not JSON) - assign_and_load_
+  /// oblpn (Wooden Pallet Task, 2026-08-15) is on the older `wms/api/`
+  /// surface, which takes form fields and returns XML rather than JSON, so
+  /// this returns the raw response body for the caller to parse (see
+  /// WoodenPalletService.assignAndLoadOblpn). Passing a Map as [fields]
+  /// to package:http's post() auto-encodes it as
+  /// application/x-www-form-urlencoded, matching the explicit header below.
+  Future<String> apiPostForm(String path, Map<String, String> fields) async {
+    final url = '${AppConfig.apiBase}$path';
+    final started = DateTime.now();
+    final res = await _client.post(
+      Uri.parse(url),
+      headers: {
+        'Authorization': 'Bearer ${auth.session!.accessToken}',
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: fields,
+    );
+    LogService.log('API_POST_FORM', {
+      'url': url,
+      'fields': fields,
+      'status': res.statusCode,
+      'elapsed_ms': DateTime.now().difference(started).inMilliseconds,
+      'response': res.body,
+    });
+    return res.body;
   }
 }

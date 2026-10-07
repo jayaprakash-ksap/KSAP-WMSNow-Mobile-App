@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Captured Files{% endblock %}
+{% block page_title %}Captured Photos &amp; Signatures{% endblock %}
+{% block crumb %}<div class="crumb">POD signatures and delivery/Split-IBLPN photos</div>{% endblock %}
+
+{% block extra_head %}
+  <style>
+    .image-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 16px;
+      margin-top: 16px;
+    }
+    .image-card {
+      background: var(--steel-900);
+      border: 1px solid var(--steel-700);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .image-card img {
+      width: 100%;
+      height: 160px;
+      object-fit: cover;
+      display: block;
+      background: #0f1216;
+      cursor: pointer;
+    }
+    .image-card .meta { padding: 8px 10px; }
+    .image-card .meta .type { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--safety-orange); font-weight: 700; }
+    .image-card .meta .date { font-size: 12px; color: var(--steel-400); margin-top: 2px; }
+    .image-card .meta .filename { font-size: 11px; color: var(--steel-400); margin-top: 4px; word-break: break-all; }
+    .image-card .meta a.dl { font-size: 12px; color: var(--safety-orange); text-decoration: none; display: inline-block; margin-top: 6px; }
+    .image-card .meta a.dl:hover { text-decoration: underline; }
+
+    .lightbox {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+      z-index: 100; align-items: center; justify-content: center; cursor: zoom-out;
+    }
+    .lightbox img { max-width: 90vw; max-height: 90vh; border-radius: 6px; }
+  </style>
+{% endblock %}
+
+{% block content %}
+    <div class="card">
+      <div class="hint" style="margin-bottom: 10px;">
+        Filenames don't carry customer/instance info (unlike session logs), so
+        filtering here is by type and date only.
+      </div>
+      <label for="type-select">Type</label>
+      <select id="type-select">
+        <option value="">-- all types --</option>
+        <option value="POD Signature">POD Signature</option>
+        <option value="Split IBLPN Photo">Split IBLPN Photo</option>
+        <option value="Other">Other</option>
+      </select>
+      <label for="date-input">Date</label>
+      <input type="date" id="date-input">
+      <div style="margin-top:16px;">
+        <button class="btn" id="search-btn" type="button">Search</button>
+      </div>
+    </div>
+
+    <div class="card" id="results-card" style="display:none;">
+      <h2>Files</h2>
+      <div class="image-grid" id="image-grid"></div>
+      <div class="hint" id="no-results" style="display:none; margin-top:10px;">No files match those filters.</div>
+    </div>
+
+  <div class="lightbox" id="lightbox" onclick="this.style.display='none'">
+    <img id="lightbox-img" src="">
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script>
+    const typeSelect = document.getElementById('type-select');
+    const dateInput = document.getElementById('date-input');
+    const resultsCard = document.getElementById('results-card');
+    const grid = document.getElementById('image-grid');
+    const noResults = document.getElementById('no-results');
+    const lightbox = document.getElementById('lightbox');
+    const lightboxImg = document.getElementById('lightbox-img');
+
+    function formatBytes(n) {
+      if (n < 1024) return n + ' B';
+      if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+      return (n / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    function openLightbox(url) {
+      lightboxImg.src = url;
+      lightbox.style.display = 'flex';
+    }
+
+    async function search() {
+      const params = new URLSearchParams();
+      if (typeSelect.value) params.set('type', typeSelect.value);
+      if (dateInput.value) params.set('date', dateInput.value);
+      const resp = await fetch('/api/images?' + params.toString());
+      const files = await resp.json();
+      grid.innerHTML = '';
+      files.forEach((f) => {
+        const url = '/captured_images/' + encodeURIComponent(f.filename);
+        const card = document.createElement('div');
+        card.className = 'image-card';
+        card.innerHTML = `
+          <img src="${url}" loading="lazy" alt="${f.filename}">
+          <div class="meta">
+            <div class="type">${f.type}</div>
+            <div class="date">${f.timestamp.replace('T', ' ')} &middot; ${formatBytes(f.size_bytes)}</div>
+            <div class="filename">${f.filename}</div>
+            <a class="dl" href="/images/download/${encodeURIComponent(f.filename)}">Download</a>
+          </div>
+        `;
+        card.querySelector('img').addEventListener('click', () => openLightbox(url));
+        grid.appendChild(card);
+      });
+      noResults.style.display = files.length ? 'none' : 'block';
+      resultsCard.style.display = 'block';
+    }
+    document.getElementById('search-btn').addEventListener('click', search);
+    search(); // load unfiltered on first visit
+  </script>
+{% endblock %}

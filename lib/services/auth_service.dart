@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../config/app_config.dart';
+import 'log_service.dart';
 
 /// Holds the OAuth session. username + envName are needed for the rwmobile
 /// request envelope ({username, env_name, htmlrfid, input}).
@@ -31,6 +32,7 @@ class AuthService {
     final basic = base64Encode(
       utf8.encode('${AppConfig.clientId}:${AppConfig.clientSecret}'),
     );
+    final started = DateTime.now();
     final res = await _client.post(
       Uri.parse(AppConfig.tokenUrl),
       headers: {
@@ -43,7 +45,15 @@ class AuthService {
         'password': password,
       },
     );
+    final elapsedMs = DateTime.now().difference(started).inMilliseconds;
     if (res.statusCode != 200) {
+      LogService.log('AUTH', {
+        'event': 'login',
+        'username': username,
+        'status': res.statusCode,
+        'elapsed_ms': elapsedMs,
+        'ok': false,
+      });
       throw Exception(_describeLoginFailure(res));
     }
     final data = jsonDecode(res.body) as Map<String, dynamic>;
@@ -52,6 +62,13 @@ class AuthService {
       refreshToken: (data['refresh_token'] ?? '') as String,
       username: username,
     );
+    LogService.log('AUTH', {
+      'event': 'login',
+      'username': username,
+      'status': res.statusCode,
+      'elapsed_ms': elapsedMs,
+      'ok': true,
+    });
   }
 
   /// Builds a message from whatever the token endpoint actually returned,
@@ -88,13 +105,15 @@ class AuthService {
     final title =
         RegExp(r'<title[^>]*>(.*?)</title>', caseSensitive: false, dotAll: true)
             .firstMatch(html);
-    final h1 = RegExp(r'<h1[^>]*>(.*?)</h1>', caseSensitive: false, dotAll: true)
-        .firstMatch(html);
+    final h1 =
+        RegExp(r'<h1[^>]*>(.*?)</h1>', caseSensitive: false, dotAll: true)
+            .firstMatch(html);
     final parts = <String>[];
     final titleText = title?.group(1)?.trim();
     final h1Text = h1?.group(1)?.trim();
     if (titleText != null && titleText.isNotEmpty) parts.add(titleText);
-    if (h1Text != null && h1Text.isNotEmpty && h1Text != titleText) parts.add(h1Text);
+    if (h1Text != null && h1Text.isNotEmpty && h1Text != titleText)
+      parts.add(h1Text);
     if (parts.isEmpty) return null;
     return parts.join(' — ');
   }
@@ -105,6 +124,7 @@ class AuthService {
     final basic = base64Encode(
       utf8.encode('${AppConfig.clientId}:${AppConfig.clientSecret}'),
     );
+    final started = DateTime.now();
     final res = await _client.post(
       Uri.parse(AppConfig.tokenUrl),
       headers: {
@@ -116,12 +136,27 @@ class AuthService {
         'refresh_token': session!.refreshToken,
       },
     );
-    if (res.statusCode != 200) return false;
+    final elapsedMs = DateTime.now().difference(started).inMilliseconds;
+    if (res.statusCode != 200) {
+      LogService.log('AUTH', {
+        'event': 'refresh',
+        'status': res.statusCode,
+        'elapsed_ms': elapsedMs,
+        'ok': false,
+      });
+      return false;
+    }
     final data = jsonDecode(res.body) as Map<String, dynamic>;
     session!.accessToken = data['access_token'] as String;
     if (data['refresh_token'] != null) {
       session!.refreshToken = data['refresh_token'] as String;
     }
+    LogService.log('AUTH', {
+      'event': 'refresh',
+      'status': res.statusCode,
+      'elapsed_ms': elapsedMs,
+      'ok': true,
+    });
     return true;
   }
 

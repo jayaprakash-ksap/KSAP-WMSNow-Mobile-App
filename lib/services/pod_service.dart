@@ -8,8 +8,7 @@ class PodOrderSummary {
   const PodOrderSummary({required this.orderNbr, required this.custName});
 
   @override
-  String toString() =>
-      custName.isEmpty ? orderNbr : '$orderNbr — $custName';
+  String toString() => custName.isEmpty ? orderNbr : '$orderNbr — $custName';
 
   @override
   bool operator ==(Object other) =>
@@ -93,7 +92,8 @@ class PodService {
         final orderNbr = (first['order_nbr'] ?? '').toString();
         if (orderNbr.isEmpty) return null;
         return PodOrderSummary(
-            orderNbr: orderNbr, custName: (first['cust_name'] ?? '').toString());
+            orderNbr: orderNbr,
+            custName: (first['cust_name'] ?? '').toString());
       },
     );
     final byOrderNbr = <String, PodOrderSummary>{};

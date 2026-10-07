@@ -40,7 +40,8 @@ class UploadService {
   /// locally only once its upload is confirmed. Returns how many synced.
   /// The folder itself IS the pending-upload queue - a file present there
   /// means "not yet uploaded", nothing else to track.
-  static Future<int> syncPending(Directory folder, UploadServerConfig config) async {
+  static Future<int> syncPending(
+      Directory folder, UploadServerConfig config) async {
     if (!config.isConfigured || !await folder.exists()) return 0;
     var synced = 0;
     final entries = await folder.list().toList();

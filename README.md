@@ -12,7 +12,7 @@ is documented for native apps (Android/iOS/Java), unlike browser clients.
 1. Install Flutter + Android SDK (`flutter doctor` all green for Android).
 2. Edit `lib/config/app_config.dart`:
    - `clientId` / `clientSecret` — register a FRESH OAuth app in WMS and paste.
-   - `domain` / `instance` — already set to tb2 / flow_test.
+   - `domain` / `instance` — no seed environment is baked in; add one via the app's Manage Environments screen on first run.
 3. Get packages:
    ```
    flutter pub get
@@ -28,7 +28,7 @@ is documented for native apps (Android/iOS/Java), unlike browser clients.
 | Interaction        | Request shape |
 |--------------------|---------------|
 | Initial / handshake| `{}` |
-| Entry submit / menu select (incl. facility code, company code, LPN) | `{htmlrfid, env_name, keyboard_input}` (`env_name` is the actual instance name, e.g. `"flow_test"`) |
+| Entry submit / menu select (incl. facility code, company code, LPN) | `{htmlrfid, env_name, keyboard_input}` (`env_name` is the actual instance name) |
 | Control/action key | `{clientid, htmlrfid, action_keys}` (bare letter/F2, e.g. "F" for Facility - NOT "Ctrl-F"; "Previous Screen" varies by screen, e.g. `W` or `F2` - always read from that screen's own `ctrl_keys`, never hardcoded) |
 | Yes/No ("another active session") | `{clientid, htmlrfid, action_keys}` (`A`=yes, `X`=no) - handled entirely automatically in the background, never shown to the user |
 | lgfapi PATCH       | `{"fields": {cust_field_1: "..."}}` (trailing slash on URL) |

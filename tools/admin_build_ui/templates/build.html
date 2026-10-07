@@ -1,0 +1,453 @@
+{% extends "base.html" %}
+{% block title %}Generate Build{% endblock %}
+{% block page_title %}Generate Build{% endblock %}
+{% block crumb %}<div class="crumb">Bake a new locked APK/Windows build</div>{% endblock %}
+
+{% block content %}
+    <div id="form-error" class="error-banner" style="display:none;"></div>
+
+    <form id="build-form">
+      <div class="card">
+        <h2>Company</h2>
+        {% if locked_company %}
+        <label for="customer">Customer name</label>
+        <input type="text" id="customer" name="customer" value="{{ locked_company }}" readonly>
+        <div class="hint">Your account is restricted to this company.</div>
+        {% else %}
+        <label for="customer">Company</label>
+        <select id="customer" name="customer" required>
+          <option value="">-- select a company --</option>
+          {% for c in company_list %}
+          <option value="{{ c }}">{{ c }}</option>
+          {% endfor %}
+        </select>
+        <div class="hint">
+          {% if company_list %}
+          Not listed? <a href="{{ url_for('companies_page') }}">Add it on the Companies page</a> first.
+          {% else %}
+          No companies yet - <a href="{{ url_for('companies_page') }}">add one</a> first.
+          {% endif %}
+        </div>
+        {% endif %}
+      </div>
+
+      <div class="card">
+        <h2>Instance(s)</h2>
+        <div class="hint" style="margin-bottom: 8px;">Pick every WMS environment this build should include.</div>
+        <div id="instance-container">
+          <div class="hint">Select a company above first.</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Customizations to bake in</h2>
+        {% for f in feature_flags %}
+        <div class="feature-row">
+          <input type="checkbox" id="feature-{{ f.key }}" name="feature-{{ f.key }}">
+          <div>
+            <label for="feature-{{ f.key }}" class="feature-title" style="margin:0; cursor:pointer;">{{ f.title }}</label>
+            <div class="feature-desc">{{ f.description }}</div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <div class="card">
+        <h2>Platform(s)</h2>
+        <div class="platform-row">
+          <label><input type="checkbox" name="build_android" checked> Android APK</label>
+          <label><input type="checkbox" name="build_windows" checked> Windows desktop</label>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>License</h2>
+        <div class="hint" style="margin-bottom: 8px;">
+          Baked into this build - the app stops allowing login on every device running it
+          once this date passes. Fixed for the life of this build: renewing or extending
+          means generating a new build with a later date here and getting it redistributed.
+          Never shown to the device user - only the notification emails below are ever told
+          how much time is left.
+        </div>
+        <label for="expiry_date_display">License Expiry Date</label>
+        <div style="display:flex; gap:8px; align-items:stretch;">
+          <input type="text" id="expiry_date_display" placeholder="DD-MM-YYYY" maxlength="10"
+                 autocomplete="off" style="flex:1;" required>
+          <button type="button" class="btn-add" id="expiry_date_calendar_btn" title="Pick from a calendar">&#128197;</button>
+        </div>
+        <div id="expiry_date_error" class="hint" style="color: var(--error-red); display:none;"></div>
+        <div class="hint">Format: DD-MM-YYYY (e.g. 25-09-2027) - type it directly, or use the calendar button for a month/year picker.</div>
+        <!-- Native date input, visually hidden - exists only so the calendar
+             button can open a real OS/browser date picker (with its own year
+             dropdown) without changing what the visible field above looks
+             like or accepts. -->
+        <input type="date" id="expiry_date_picker" style="position:absolute; width:1px; height:1px; opacity:0; pointer-events:none;">
+        <!-- The actual submitted value (name="expiry_date") - always kept in ISO
+             YYYY-MM-DD, which is what build_lib.validate_expiry_date requires,
+             independent of what format the visible field above displays/accepts. -->
+        <input type="hidden" id="expiry_date" name="expiry_date">
+      </div>
+
+      <div class="card">
+        <h2>Log Server (optional)</h2>
+        <div class="hint" style="margin-bottom: 8px;">
+          Baked into this build so devices upload their session logs automatically -
+          browsable under "Logs" above. Leave the URL blank to skip (logs then stay
+          local-only on each device, same as before this existed).
+        </div>
+        <label for="log_server_url">Server URL</label>
+        <input type="url" id="log_server_url" name="log_server_url" placeholder="http://192.168.1.5:5050">
+        <label for="log_server_token">Token</label>
+        <input type="text" id="log_server_token" name="log_server_token" value="{{ log_upload_token }}">
+      </div>
+
+    </form>
+
+    <div class="card" id="notify-card">
+      <h2>License Expiry Notifications</h2>
+      <div class="hint" style="margin-bottom: 8px;">
+        As any customer's current build approaches its License Expiry Date above, an email
+        is sent here (at 30, 14, 7, 1, and 0 days remaining) so a renewal build can go out
+        before the app actually stops working. This list is global, not per build - not
+        part of the form above, saved immediately when you add or remove an address.
+      </div>
+      <div id="notify-email-list" style="margin-bottom: 8px;"></div>
+      <div style="display:flex; gap:8px;">
+        <input type="email" id="notify-email-input" placeholder="name@company.com" style="flex:1;">
+        <button type="button" class="btn-add" id="notify-email-add">+ Add</button>
+      </div>
+    </div>
+
+    <!-- form="build-form" (not a descendant of the form anymore) so it
+         still submits build-form from its new position at the bottom. -->
+    <button type="submit" class="btn" id="generate-btn" form="build-form">Generate Build</button>
+
+    <div class="card" id="progress-card" style="display:none; margin-top: 24px;">
+      <h2>Build Progress <span id="status-pill" class="status-pill running">Running</span></h2>
+      <div class="progress-log" id="progress-log"></div>
+      <div class="downloads" id="downloads"></div>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+  <script>
+    const customerField = document.getElementById('customer');
+    const customerLocked = customerField.readOnly;
+    const instanceContainer = document.getElementById('instance-container');
+
+    // Populates the Instance(s) checklist for whichever company is
+    // currently selected (2026-09-25) - instances are defined once on the
+    // Instances page and picked here, never retyped, so the same
+    // environment can't drift into two differently-spelled copies the way
+    // free-typed Customer/Environment names used to.
+    async function loadInstancesForCompany(company, checkedNames) {
+      checkedNames = checkedNames || [];
+      if (!company) {
+        instanceContainer.innerHTML = '<div class="hint">Select a company above first.</div>';
+        return;
+      }
+      instanceContainer.innerHTML = '<div class="hint">Loading...</div>';
+      const resp = await fetch('/api/instance-defs?company=' + encodeURIComponent(company));
+      const list = await resp.json();
+      if (!resp.ok) {
+        instanceContainer.innerHTML = '<div class="hint">' + (list.error || 'Could not load instances.') + '</div>';
+        return;
+      }
+      if (!list.length) {
+        instanceContainer.innerHTML =
+          '<div class="hint">No instances defined yet for this company - '
+          + '<a href="{{ url_for("instances_page") }}">add one</a> first.</div>';
+        return;
+      }
+      instanceContainer.innerHTML = '';
+      list.forEach((inst) => {
+        const row = document.createElement('label');
+        row.style.cssText = 'display:flex; align-items:center; gap:8px; padding:4px 0; cursor:pointer;';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.name = 'instance_names';
+        cb.value = inst.name;
+        cb.checked = checkedNames.includes(inst.name);
+        const span = document.createElement('span');
+        span.textContent = inst.name + ' (' + inst.domain + ' / ' + inst.instance + ')';
+        row.appendChild(cb);
+        row.appendChild(span);
+        instanceContainer.appendChild(row);
+      });
+    }
+
+    if (!customerLocked) {
+      customerField.addEventListener('change', () => loadInstancesForCompany(customerField.value));
+    }
+
+    // Rebuild flow (?prefill=<record_id>, linked from the History page) -
+    // reloads a past build's customer/instances/customizations/platform
+    // choices into the form so adding a new customization or pushing an
+    // upgrade for an existing customer is "check a box, click Generate"
+    // instead of retyping everything. A historical record's environments
+    // predate the Instances master list (2026-09-25) for any build made
+    // before then - those are matched by name where a same-named Instance
+    // now exists, and just left unchecked (with a note) where it doesn't,
+    // rather than silently reconstructing environment details that should
+    // now live only on the Instances page.
+    async function prefillFromHistory(recordId) {
+      const resp = await fetch('/api/history-record/' + recordId);
+      if (!resp.ok) return false;
+      const record = await resp.json();
+
+      if (!customerLocked) customerField.value = record.customer;
+      const wantedNames = record.environments.map((e) => e.name);
+      await loadInstancesForCompany(record.customer, wantedNames);
+      const foundNames = Array.from(instanceContainer.querySelectorAll('input[name="instance_names"]')).map((cb) => cb.value);
+      const missing = wantedNames.filter((n) => !foundNames.includes(n));
+      if (missing.length) {
+        const note = document.createElement('div');
+        note.className = 'hint';
+        note.textContent = 'Not redefined as an Instance yet, so not pre-selected: ' + missing.join(', ')
+          + ' - add them on the Instances page if this build still needs them.';
+        instanceContainer.appendChild(note);
+      }
+
+      record.feature_keys.forEach((key) => {
+        const cb = document.getElementById('feature-' + key);
+        if (cb) cb.checked = true;
+      });
+      document.querySelector('[name="build_android"]').checked = !!record.build_android;
+      document.querySelector('[name="build_windows"]').checked = !!record.build_windows;
+      if (record.log_server_url) document.getElementById('log_server_url').value = record.log_server_url;
+      if (record.log_server_token) document.getElementById('log_server_token').value = record.log_server_token;
+      // Screen/print matching (truck_temp_page_title_match and friends) is
+      // no longer a form field - build_lib.py fills those in automatically
+      // per customer (see CUSTOMER_SCREEN_OVERRIDES), so there's nothing
+      // here to prefill.
+      // Rebuilding (e.g. a renewal) still defaults to a fresh one-year
+      // date from today, not the expired/expiring date being carried
+      // over - the whole point of a rebuild-for-renewal is a NEW date.
+      setExpiryFromIso(defaultExpiryDateISO());
+      return true;
+    }
+
+    function defaultExpiryDateISO() {
+      const d = new Date();
+      d.setFullYear(d.getFullYear() + 1);
+      return d.toISOString().slice(0, 10);
+    }
+
+    // ---- License Expiry Date: typeable DD-MM-YYYY, with a calendar
+    // button (native picker, has its own year dropdown) as an alternative
+    // - not a replacement (2026-09-26). Two fields always kept in sync:
+    // expiry_date_display (what the user sees/types, DD-MM-YYYY) and the
+    // hidden expiry_date (name="expiry_date", ISO YYYY-MM-DD - what the
+    // server actually requires, see build_lib.validate_expiry_date).
+    const displayField = document.getElementById('expiry_date_display');
+    const hiddenField = document.getElementById('expiry_date');
+    const pickerField = document.getElementById('expiry_date_picker');
+    const expiryErrorDiv = document.getElementById('expiry_date_error');
+
+    function isoToDisplay(iso) {
+      const [y, m, d] = iso.split('-');
+      return `${d}-${m}-${y}`;
+    }
+
+    // Returns the ISO string, or null if text isn't DD-MM-YYYY shaped, or
+    // '' if it's shaped right but not a real calendar date (e.g. 31-02-2027
+    // parses fine as digits but Date then rolls it over to March) - the
+    // caller shows a different message for each case.
+    function displayToIso(text) {
+      const match = /^(\d{2})-(\d{2})-(\d{4})$/.exec(text.trim());
+      if (!match) return null;
+      const [, dd, mm, yyyy] = match;
+      const iso = `${yyyy}-${mm}-${dd}`;
+      const d = new Date(iso + 'T00:00:00');
+      const roundTrips = !isNaN(d) && d.getFullYear() === Number(yyyy)
+        && d.getMonth() === Number(mm) - 1 && d.getDate() === Number(dd);
+      return roundTrips ? iso : '';
+    }
+
+    function setExpiryFromIso(iso) {
+      displayField.value = isoToDisplay(iso);
+      hiddenField.value = iso;
+      pickerField.value = iso;
+      expiryErrorDiv.style.display = 'none';
+    }
+
+    // Validates on every keystroke so a bad date can never silently reach
+    // Generate Build - clears the field that actually gets submitted the
+    // moment the text stops being a valid date, rather than only checking
+    // once at submit time.
+    displayField.addEventListener('input', () => {
+      const iso = displayToIso(displayField.value);
+      if (iso === null) {
+        hiddenField.value = '';
+        expiryErrorDiv.style.display = 'none'; // still mid-typing, not wrong yet
+        return;
+      }
+      if (iso === '') {
+        hiddenField.value = '';
+        expiryErrorDiv.textContent = 'Not a real calendar date - check the day/month.';
+        expiryErrorDiv.style.display = 'block';
+        return;
+      }
+      hiddenField.value = iso;
+      pickerField.value = iso;
+      expiryErrorDiv.style.display = 'none';
+    });
+
+    document.getElementById('expiry_date_calendar_btn').addEventListener('click', () => {
+      if (pickerField.showPicker) pickerField.showPicker();
+      else pickerField.click();
+    });
+    pickerField.addEventListener('change', () => {
+      if (pickerField.value) setExpiryFromIso(pickerField.value);
+    });
+
+    const prefillId = new URLSearchParams(window.location.search).get('prefill');
+    if (prefillId) {
+      prefillFromHistory(prefillId);
+    } else {
+      if (customerLocked) loadInstancesForCompany(customerField.value);
+      // Default the Log Server URL to wherever the admin is already
+      // talking to this server from - almost always the right address for
+      // devices on the same network to reach it too.
+      document.getElementById('log_server_url').value = window.location.origin;
+      setExpiryFromIso(defaultExpiryDateISO());
+    }
+
+    const form = document.getElementById('build-form');
+    const errorBox = document.getElementById('form-error');
+    const progressCard = document.getElementById('progress-card');
+    const progressLog = document.getElementById('progress-log');
+    const statusPill = document.getElementById('status-pill');
+    const downloadsDiv = document.getElementById('downloads');
+    const generateBtn = document.getElementById('generate-btn');
+
+    let pollTimer = null;
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errorBox.style.display = 'none';
+
+      // Final gate - covers submitting without ever touching the date
+      // field having gone through a bad intermediate state the 'input'
+      // handler already caught (that clears hiddenField.value), and
+      // covers a completely empty field.
+      const finalIso = displayToIso(displayField.value);
+      if (!finalIso) {
+        expiryErrorDiv.textContent = finalIso === null
+          ? 'Enter the License Expiry Date as DD-MM-YYYY.'
+          : 'Not a real calendar date - check the day/month.';
+        expiryErrorDiv.style.display = 'block';
+        displayField.focus();
+        return;
+      }
+      hiddenField.value = finalIso;
+
+      downloadsDiv.innerHTML = '';
+      progressLog.textContent = '';
+      statusPill.textContent = 'Running';
+      statusPill.className = 'status-pill running';
+      progressCard.style.display = 'block';
+      generateBtn.disabled = true;
+
+      const formData = new FormData(form);
+      let resp, data;
+      try {
+        resp = await fetch('/build', { method: 'POST', body: formData });
+        data = await resp.json();
+      } catch (err) {
+        showError('Request failed: ' + err);
+        generateBtn.disabled = false;
+        return;
+      }
+      if (!resp.ok) {
+        showError(data.error || 'Build request failed.');
+        generateBtn.disabled = false;
+        progressCard.style.display = 'none';
+        return;
+      }
+      pollStatus(data.job_id);
+    });
+
+    function showError(msg) {
+      errorBox.textContent = msg;
+      errorBox.style.display = 'block';
+    }
+
+    function pollStatus(jobId) {
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(async () => {
+        const resp = await fetch('/status/' + jobId);
+        const data = await resp.json();
+        progressLog.textContent = data.log_lines.join('\n');
+        progressLog.scrollTop = progressLog.scrollHeight;
+        if (data.done) {
+          clearInterval(pollTimer);
+          generateBtn.disabled = false;
+          if (data.ok) {
+            statusPill.textContent = 'Success';
+            statusPill.className = 'status-pill ok';
+          } else {
+            statusPill.textContent = 'Failed';
+            statusPill.className = 'status-pill failed';
+          }
+          downloadsDiv.innerHTML = '';
+          if (data.apk_ready) {
+            const a = document.createElement('a');
+            a.className = 'btn';
+            a.href = '/download/' + jobId + '/apk';
+            a.textContent = 'Download APK';
+            downloadsDiv.appendChild(a);
+          }
+          if (data.windows_ready) {
+            const a = document.createElement('a');
+            a.className = 'btn';
+            a.href = '/download/' + jobId + '/windows';
+            a.textContent = 'Download Windows zip';
+            downloadsDiv.appendChild(a);
+          }
+        }
+      }, 1500);
+    }
+
+    // ---- License expiry notification email list ----
+    const notifyListDiv = document.getElementById('notify-email-list');
+    const notifyInput = document.getElementById('notify-email-input');
+
+    function renderNotifyEmails(emails) {
+      notifyListDiv.innerHTML = '';
+      if (!emails.length) {
+        notifyListDiv.innerHTML = '<div class="hint">No addresses yet - nothing will be sent until at least one is added.</div>';
+        return;
+      }
+      emails.forEach((email) => {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex; align-items:center; gap:8px; padding:4px 0;';
+        row.innerHTML = `<span style="flex:1;">${email}</span>
+          <button type="button" class="remove-env" data-email="${email}">Remove</button>`;
+        row.querySelector('button').addEventListener('click', async () => {
+          const resp = await fetch('/api/notify-emails/remove', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email }),
+          });
+          renderNotifyEmails(await resp.json());
+        });
+        notifyListDiv.appendChild(row);
+      });
+    }
+
+    document.getElementById('notify-email-add').addEventListener('click', async () => {
+      const email = notifyInput.value.trim();
+      if (!email) return;
+      const resp = await fetch('/api/notify-emails/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      renderNotifyEmails(await resp.json());
+      notifyInput.value = '';
+    });
+
+    fetch('/api/notify-emails').then((r) => r.json()).then(renderNotifyEmails);
+  </script>
+{% endblock %}

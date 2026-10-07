@@ -57,6 +57,12 @@ app.*.map.json
 # compiled in, must never be committed.
 /customer_builds/
 
+# Admin Build UI's build history (tools/build_lib.py's record_build) -
+# saves each build's environment/OAuth details so a later build for the
+# same customer doesn't need them retyped. Same "never commit, live
+# secrets" reasoning as /customer_builds/ above.
+/tools/admin_build_ui/data/
+
 # Stable, persistent copy of the plain unlocked daily-dev Windows build -
 # the desktop shortcut points here, not into /build/, specifically so
 # running generate_customer_build.py can never again silently overwrite it

@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block title %}Instances{% endblock %}
+{% block page_title %}Instances{% endblock %}
+{% block crumb %}<div class="crumb">WMS environments per company</div>{% endblock %}
+
+{% block content %}
+<div id="form-error" class="error-banner" style="display:none;"></div>
+
+<div class="card">
+  <h2>Instances</h2>
+  <div class="hint" style="margin-bottom: 8px;">
+    One WMS environment (domain/instance/OAuth client), linked to a Company - defined once
+    here, then picked (not retyped) on the build form. "Name" is the same friendly per-build
+    label used everywhere else in this tool (e.g. "mycompany_test"), not the Oracle instance code
+    below it.
+  </div>
+  {% if not company_list %}
+  <div class="hint">No companies yet - <a href="{{ url_for('companies_page') }}">add one</a> first.</div>
+  {% endif %}
+  <div class="table-wrap">
+    <table class="log-table" id="instances-table">
+      <thead><tr><th>Name</th><th>Company</th><th>Domain</th><th>Instance</th><th>Client ID</th><th>Secret</th><th></th></tr></thead>
+      <tbody id="instances-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Add Instance</h2>
+  <div class="field-grid">
+    <div class="field-half">
+      <label for="new-name">Instance name</label>
+      <input type="text" id="new-name" placeholder="e.g. mycompany_test">
+    </div>
+    <div class="field-half">
+      <label for="new-company">Company</label>
+      <select id="new-company">
+        <option value="">-- select a company --</option>
+        {% for c in company_list %}
+        <option value="{{ c }}">{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field-half">
+      <label for="new-domain">Domain</label>
+      <input type="text" id="new-domain" placeholder="https://tb2.wms.ocs.oraclecloud.com">
+    </div>
+    <div class="field-half">
+      <label for="new-instance">Instance (Oracle pod/instance code)</label>
+      <input type="text" id="new-instance" placeholder="URL path segment">
+    </div>
+    <div class="field-half">
+      <label for="new-client-id">OAuth Client ID</label>
+      <input type="text" id="new-client-id">
+    </div>
+    <div class="field-half">
+      <label for="new-client-secret">OAuth Client Secret</label>
+      <input type="password" id="new-client-secret">
+    </div>
+  </div>
+  <button type="button" class="btn-add" id="add-instance-btn" style="margin-top: 16px;">+ Add instance</button>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const errorBanner = document.getElementById('form-error');
+  const tbody = document.getElementById('instances-tbody');
+
+  function showError(msg) { errorBanner.textContent = msg; errorBanner.style.display = 'block'; }
+  function clearError() { errorBanner.style.display = 'none'; }
+
+  function renderInstances(list) {
+    tbody.innerHTML = '';
+    list.forEach((inst) => {
+      const tr = document.createElement('tr');
+      const nameTd = document.createElement('td');
+      nameTd.textContent = inst.name;
+      nameTd.style.fontWeight = '600';
+      tr.appendChild(nameTd);
+
+      const companyTd = document.createElement('td');
+      companyTd.textContent = inst.company;
+      tr.appendChild(companyTd);
+
+      [inst.domain, inst.instance, inst.client_id, inst.client_secret].forEach((val) => {
+        const td = document.createElement('td');
+        td.textContent = val;
+        td.className = 'mono';
+        tr.appendChild(td);
+      });
+
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'remove-env';
+      removeBtn.textContent = 'Remove';
+      removeBtn.addEventListener('click', async () => {
+        clearError();
+        const resp = await fetch('/api/instance-defs/remove', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: inst.name }),
+        });
+        const body = await resp.json();
+        if (!resp.ok) { showError(body.error); return; }
+        renderInstances(body);
+      });
+      const actionTd = document.createElement('td');
+      actionTd.appendChild(removeBtn);
+      tr.appendChild(actionTd);
+
+      tbody.appendChild(tr);
+    });
+  }
+
+  document.getElementById('add-instance-btn').addEventListener('click', async () => {
+    clearError();
+    const payload = {
+      name: document.getElementById('new-name').value.trim(),
+      company: document.getElementById('new-company').value,
+      domain: document.getElementById('new-domain').value.trim(),
+      instance: document.getElementById('new-instance').value.trim(),
+      client_id: document.getElementById('new-client-id').value.trim(),
+      client_secret: document.getElementById('new-client-secret').value,
+    };
+    const resp = await fetch('/api/instance-defs/add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const body = await resp.json();
+    if (!resp.ok) { showError(body.error); return; }
+    ['new-name', 'new-domain', 'new-instance', 'new-client-id', 'new-client-secret'].forEach((id) => {
+      document.getElementById(id).value = '';
+    });
+    document.getElementById('new-company').value = '';
+    renderInstances(body);
+  });
+
+  renderInstances({{ instance_list | tojson }});
+</script>
+{% endblock %}

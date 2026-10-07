@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% block title %}Build History{% endblock %}
+{% block page_title %}Build History{% endblock %}
+{% block crumb %}<div class="crumb">Every past build, filterable by customer</div>{% endblock %}
+
+{% block content %}
+    <div class="card">
+      <h2>Find a Customer</h2>
+      <label for="customer-select">Customer</label>
+      <select id="customer-select">
+        <option value="">-- select a customer --</option>
+        {% for c in customers %}
+        <option value="{{ c }}">{{ c }}</option>
+        {% endfor %}
+      </select>
+      {% if not customers %}
+      <div class="hint">No builds recorded yet - generate one from "New Build" first.</div>
+      {% endif %}
+    </div>
+
+    <div class="card" id="history-card" style="display:none;">
+      <h2>Build History <span id="history-customer-name"></span></h2>
+      <div class="hint" style="margin-bottom: 10px;">Latest build is listed first. Check exactly two rows to compare them.</div>
+      <div style="overflow-x:auto;">
+        <table id="history-table" style="width:100%; border-collapse: collapse;">
+          <thead>
+            <tr style="text-align:left; color: var(--steel-400); font-size: 12.5px; text-transform: uppercase;">
+              <th style="padding:8px 6px;"></th>
+              <th style="padding:8px 6px;">Date</th>
+              <th style="padding:8px 6px;">Environment(s)</th>
+              <th style="padding:8px 6px;">Customizations</th>
+              <th style="padding:8px 6px;">Platform(s)</th>
+              <th style="padding:8px 6px;">License Expiry</th>
+              <th style="padding:8px 6px;">Downloads</th>
+              <th style="padding:8px 6px;"></th>
+            </tr>
+          </thead>
+          <tbody id="history-body"></tbody>
+        </table>
+      </div>
+      <div style="margin-top:16px;">
+        <button class="btn" id="compare-btn" disabled>Compare Selected</button>
+      </div>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+  <script>
+    const select = document.getElementById('customer-select');
+    const historyCard = document.getElementById('history-card');
+    const historyBody = document.getElementById('history-body');
+    const historyCustomerName = document.getElementById('history-customer-name');
+    const compareBtn = document.getElementById('compare-btn');
+
+    function badge(text) {
+      return `<span style="display:inline-block; background: var(--steel-700); color: var(--steel-200); border-radius: 4px; padding: 2px 8px; font-size: 12px; margin: 2px 4px 2px 0;">${text}</span>`;
+    }
+
+    function updateCompareBtn() {
+      const checked = historyBody.querySelectorAll('input[type="checkbox"]:checked');
+      compareBtn.disabled = checked.length !== 2;
+      compareBtn.onclick = () => {
+        if (checked.length !== 2) return;
+        window.location.href = `/compare?a=${checked[0].value}&b=${checked[1].value}`;
+      };
+    }
+
+    select.addEventListener('change', async () => {
+      const customer = select.value;
+      if (!customer) {
+        historyCard.style.display = 'none';
+        return;
+      }
+      const resp = await fetch('/api/history/' + encodeURIComponent(customer));
+      const records = await resp.json();
+      historyCustomerName.textContent = '- ' + customer;
+      historyBody.innerHTML = '';
+      records.forEach((r) => {
+        const envNames = r.environments_display.map(e => `${e.name} (${e.instance})`).join(', ');
+        const features = r.feature_titles.length
+          ? r.feature_titles.map(badge).join('')
+          : '<span class="hint">none</span>';
+        const platforms = [r.build_android ? 'Android' : null, r.build_windows ? 'Windows' : null]
+          .filter(Boolean).join(' + ');
+        const today = new Date().toISOString().slice(0, 10);
+        const expiryColor = !r.expiry_date ? 'var(--steel-400)'
+          : r.expiry_date < today ? 'var(--error-red, #e5484d)' : 'inherit';
+        const expiryCell = r.expiry_date
+          ? `<span style="color:${expiryColor};">${r.expiry_date}</span>`
+          : '<span class="hint">not set</span>';
+        const downloads = [
+          r.apk_exists ? `<a class="btn" style="padding:5px 10px; font-size:12px;" href="/history-download/${r.id}/apk">APK</a>` : '',
+          r.windows_exists ? `<a class="btn" style="padding:5px 10px; font-size:12px;" href="/history-download/${r.id}/windows">Windows</a>` : '',
+        ].join(' ') || '<span class="hint">unavailable</span>';
+
+        const tr = document.createElement('tr');
+        tr.style.borderTop = '1px solid var(--steel-700)';
+        tr.innerHTML = `
+          <td style="padding:10px 6px;"><input type="checkbox" value="${r.id}"></td>
+          <td style="padding:10px 6px; white-space:nowrap;">${r.timestamp.replace('T', ' ')}</td>
+          <td style="padding:10px 6px;">
+            ${envNames}
+            <div><a class="toolbar-link" data-record="${r.id}" data-open="0">Show credentials</a></div>
+          </td>
+          <td style="padding:10px 6px;">${features}</td>
+          <td style="padding:10px 6px;">${platforms}</td>
+          <td style="padding:10px 6px; white-space:nowrap;">${expiryCell}</td>
+          <td style="padding:10px 6px; white-space:nowrap;">${downloads}</td>
+          <td style="padding:10px 6px;"><a class="btn-add" style="text-decoration:none; display:inline-block;" href="/?prefill=${r.id}">Rebuild</a></td>
+        `;
+        tr.querySelector('input[type="checkbox"]').addEventListener('change', updateCompareBtn);
+        historyBody.appendChild(tr);
+
+        // Hidden row, one per build - filled in on demand (2026-08-27) so
+        // the admin can look up a customer's real Client ID/Secret right
+        // here instead of going through Rebuild just to see them, without
+        // shipping unmasked secrets in the page on every load.
+        const credRow = document.createElement('tr');
+        credRow.style.display = 'none';
+        credRow.innerHTML = `<td colspan="8" style="padding:10px 6px 16px;"><div class="progress-log" style="font-size:12px;">Loading...</div></td>`;
+        historyBody.appendChild(credRow);
+
+        tr.querySelector('.toolbar-link').addEventListener('click', async (e) => {
+          const link = e.target;
+          const open = link.dataset.open === '1';
+          if (open) {
+            credRow.style.display = 'none';
+            link.textContent = 'Show credentials';
+            link.dataset.open = '0';
+            return;
+          }
+          link.textContent = 'Loading...';
+          const resp = await fetch('/api/history-record/' + r.id);
+          const record = await resp.json();
+          const lines = record.environments.map(env =>
+            `${env.name}\n  Domain:   ${env.domain}\n  Instance: ${env.instance}\n  Client ID:     ${env.client_id}\n  Client Secret: ${env.client_secret}`
+          ).join('\n\n');
+          credRow.querySelector('.progress-log').textContent = lines;
+          credRow.style.display = 'table-row';
+          link.textContent = 'Hide credentials';
+          link.dataset.open = '1';
+        });
+      });
+      historyCard.style.display = 'block';
+      updateCompareBtn();
+    });
+  </script>
+{% endblock %}
